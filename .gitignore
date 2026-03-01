@@ -1,0 +1,48 @@
+# ========== セキュリティ最重要 ==========
+# サービスアカウントキー（絶対にコミットしない）
+secrets/
+*.json
+!dbt/dbt_project.yml
+!dbt/packages.yml
+
+# Streamlit シークレット
+.streamlit/secrets.toml
+
+# dbt 接続情報
+profiles.yml
+
+# 環境変数ファイル
+.env
+.env.*
+!.env.example
+
+# ========== ビルド成果物 ==========
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+venv/
+.venv/
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+
+# ========== IDE ==========
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ========== テスト ==========
+.coverage
+htmlcov/
+.pytest_cache/

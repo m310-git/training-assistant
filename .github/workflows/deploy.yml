@@ -1,0 +1,62 @@
+# ============================================================
+# main マージ時に自動デプロイ
+# Cloud Functions を最新コードに更新する
+# ============================================================
+name: Deploy
+
+# いつ実行するか
+on:
+  push:
+    branches: [main]               # mainにマージされた時だけ実行
+
+jobs:
+  deploy-cloud-functions:
+    name: Deploy Cloud Functions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read                # リポジトリの読み取り
+      id-token: write               # Workload Identity Federation用（キーレス認証）
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # GCPにキーレスで認証（サービスアカウントキー不要）
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      # gcloud コマンドを使えるようにする
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # --- dbt実行用の Cloud Function をデプロイ ---
+      - name: Deploy dbt-runner
+        run: |
+          gcloud functions deploy dbt-runner \
+            --gen2 \
+            --runtime=python311 \
+            --region=asia-northeast1 \
+            --source=cloud_functions/dbt_runner \
+            --entry-point=main \
+            --trigger-http \
+            --service-account=sa-dbt-runner@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
+            --memory=512MB \
+            --timeout=300s \
+            --no-allow-unauthenticated
+
+      # --- 通知用の Cloud Function をデプロイ ---
+      - name: Deploy notifier
+        run: |
+          gcloud functions deploy notifier \
+            --gen2 \
+            --runtime=python311 \
+            --region=asia-northeast1 \
+            --source=cloud_functions/notifier \
+            --entry-point=main \
+            --trigger-http \
+            --service-account=sa-cf-notifier@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
+            --memory=256MB \
+            --timeout=60s \
+            --no-allow-unauthenticated

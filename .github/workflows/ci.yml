@@ -1,0 +1,149 @@
+# ============================================================
+# PR時に自動実行されるCI（継続的インテグレーション）
+# コードの品質を自動チェックする
+# ============================================================
+name: CI
+
+# いつ実行するか
+on:
+  pull_request:                    # PRが作られた時
+    branches: [develop, main]      # develop or main 向けのPRが対象
+  push:
+    branches: [develop]            # developへの直接pushでも実行
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # ========================================
+  # Job 1: コードの書き方チェック
+  # ========================================
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest         # GitHubが用意するLinuxマシンで実行
+    steps:
+      - uses: actions/checkout@v4  # リポジトリのコードを取得
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pip             # 依存パッケージをキャッシュ（高速化）
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+          restore-keys: ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install ruff black
+
+      - name: Run Ruff (linter)     # コードの問題を検出
+        run: ruff check streamlit/ cloud_functions/ tests/ --ignore E501
+
+      - name: Run Black (formatter) # コードのフォーマットをチェック
+        run: black --check streamlit/ cloud_functions/ tests/
+
+  # ========================================
+  # Job 2: dbt のコンパイルとテスト
+  # ========================================
+  dbt-test:
+    name: dbt Compile & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dbt
+        run: |
+          pip install --upgrade pip
+          pip install dbt-bigquery==1.8.*
+
+      - name: Create dbt profiles.yml for CI
+        run: |
+          mkdir -p ~/.dbt
+          cat <<PROFILE > ~/.dbt/profiles.yml
+          training_assistant:
+            target: ci
+            outputs:
+              ci:
+                type: bigquery
+                method: service-account
+                project: ${{ secrets.GCP_PROJECT_ID }}
+                dataset: staging
+                location: asia-northeast1
+                keyfile: /tmp/sa-key.json
+                threads: 1
+          PROFILE
+
+      - name: Write service account key
+        run: echo '${{ secrets.GCP_SA_KEY_JSON }}' > /tmp/sa-key.json
+
+      - name: dbt deps
+        working-directory: ./dbt
+        run: dbt deps
+
+      - name: dbt compile              # SQLが正しくコンパイルできるか
+        working-directory: ./dbt
+        run: dbt compile
+
+      - name: dbt test                  # スキーマテストを実行
+        working-directory: ./dbt
+        run: dbt test
+        continue-on-error: false        # テスト失敗でCIを止める
+
+      - name: Cleanup                   # 認証情報を削除（セキュリティ）
+        if: always()
+        run: rm -f /tmp/sa-key.json
+
+  # ========================================
+  # Job 3: ユニットテスト
+  # ========================================
+  unit-test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pytest pytest-cov
+          if [ -f streamlit/requirements.txt ]; then pip install -r streamlit/requirements.txt; fi
+          if [ -f cloud_functions/notifier/requirements.txt ]; then pip install -r cloud_functions/notifier/requirements.txt; fi
+
+      - name: Run unit tests
+        run: |
+          if [ -d tests/unit ] && [ "$(ls -A tests/unit)" ]; then
+            pytest tests/unit/ -v --cov --cov-report=term-missing
+          else
+            echo "No unit tests found yet. Skipping."
+          fi
+
+  # ========================================
+  # Job 4: 認証情報の漏洩チェック
+  # ========================================
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0               # 全履歴を取得（漏洩チェックに必要）
+
+      - name: Run Gitleaks              # コードに秘密情報が含まれていないか検査
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
