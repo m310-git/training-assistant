@@ -512,6 +512,7 @@ DOCEOF
 ```sql
 SELECT *
 FROM ML.EVALUATE(MODEL `mart.training_predictor`)
+```
 
 | 指標 | 説明 | 目安 |
 | --- | --- | --- |
