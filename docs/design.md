@@ -1852,8 +1852,6 @@ def retrain_ml_model():
 
 ### **9.3. 通知カウンター（LINE無料枠管理）**
 
-sql
-
 ```sql
 -- raw.notification_log（通知送信ログ）
 CREATE TABLE IF NOT EXISTS raw.notification_log (
@@ -1868,8 +1866,6 @@ OPTIONS (
 );
 
 ```
-
-sql
 
 ```sql
 -- 月間送信数の確認クエリ（Cloud Functions内で使用）
