@@ -57,7 +57,6 @@ scripts/setup_bigquery.sql を作成:
     -- ============================================================
     -- Raw層テーブル定義（設計書v2準拠）
     -- ============================================================
-
     -- トレーニングログ（1セット=1レコード）
     CREATE TABLE IF NOT EXISTS raw.training_log (
         log_id          STRING      NOT NULL,
@@ -73,13 +72,12 @@ scripts/setup_bigquery.sql を作成:
         input_source    STRING      NOT NULL,
         created_at      TIMESTAMP   NOT NULL,
         updated_at      TIMESTAMP   NOT NULL,
-        is_deleted      BOOL        NOT NULL DEFAULT FALSE
+        is_deleted      BOOL        NOT NULL
     )
     PARTITION BY training_date
     OPTIONS (
         description = '生トレーニングログ。1セット=1レコード。自動保存・編集対応。'
     );
-
     -- 種目マスタ
     CREATE TABLE IF NOT EXISTS raw.exercise_master (
         exercise_id     STRING      NOT NULL,
@@ -93,7 +91,6 @@ scripts/setup_bigquery.sql を作成:
     OPTIONS (
         description = '種目マスタ。管理者画面から管理。'
     );
-
     -- ユーザーマスタ
     CREATE TABLE IF NOT EXISTS raw.user_master (
         user_id         STRING      NOT NULL,
@@ -106,7 +103,6 @@ scripts/setup_bigquery.sql を作成:
     OPTIONS (
         description = 'ユーザーマスタ。初期セットアップ時に手動投入。'
     );
-
     -- 種目追加リクエスト
     CREATE TABLE IF NOT EXISTS raw.exercise_request (
         request_id      STRING      NOT NULL,
@@ -122,7 +118,6 @@ scripts/setup_bigquery.sql を作成:
     OPTIONS (
         description = '種目追加リクエスト。全ユーザーが送信可能。'
     );
-
     -- 通知送信ログ
     CREATE TABLE IF NOT EXISTS raw.notification_log (
         notification_id STRING      NOT NULL,
