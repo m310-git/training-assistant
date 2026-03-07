@@ -1,0 +1,37 @@
+version: 2
+
+models:
+  - name: d_body_part
+    description: "部位マスタ（6部位）"
+    columns:
+      - name: body_part_id
+        tests: [unique, not_null]
+
+  - name: d_exercise
+    description: "種目マスタ（有効のみ）"
+    columns:
+      - name: exercise_id
+        tests: [unique, not_null]
+      - name: body_part_id
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['chest', 'back', 'shoulder', 'leg', 'arm', 'other']
+
+  - name: d_user
+    description: "ユーザーマスタ（有効のみ）"
+    columns:
+      - name: user_id
+        tests: [unique, not_null]
+
+  - name: fct_training_set
+    description: "トレーニングファクトテーブル"
+    columns:
+      - name: log_id
+        tests: [unique, not_null]
+      - name: user_id
+        tests: [not_null]
+      - name: volume
+        tests: [not_null]
+
