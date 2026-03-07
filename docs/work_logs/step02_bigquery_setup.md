@@ -53,7 +53,7 @@ Raw層テーブル5つの作成と初期データ（seed）投入を行う。
 ### 2-2. Raw層テーブル作成SQL
 
 scripts/setup_bigquery.sql を作成:
-
+---
 -- ============================================================
 -- Raw層テーブル定義（設計書v2準拠）
 -- ============================================================
@@ -129,7 +129,7 @@ CREATE TABLE IF NOT EXISTS raw.notification_log (
 OPTIONS (
     description = '通知送信ログ。LINE無料枠の管理に使用。'
 );
-
+---
 ### 2-3. テーブル作成実行
 
     bq query --use_legacy_sql=false < scripts/setup_bigquery.sql
