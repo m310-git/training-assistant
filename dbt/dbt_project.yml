@@ -20,7 +20,6 @@ models:
   training_assistant:
     staging:
       +materialized: incremental
-      +schema: staging
+      
     mart:
       +materialized: table
-      +schema: mart
