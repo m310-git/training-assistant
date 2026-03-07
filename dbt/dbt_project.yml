@@ -1,0 +1,26 @@
+name: 'training_assistant'
+version: '1.0.0'
+config-version: 2
+
+profile: 'training_assistant'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+models:
+  training_assistant:
+    staging:
+      +materialized: incremental
+      +schema: staging
+    mart:
+      +materialized: table
+      +schema: mart

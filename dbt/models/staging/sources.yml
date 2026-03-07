@@ -1,0 +1,17 @@
+version: 2
+
+sources:
+  - name: raw
+    database: training-assistant-prod
+    schema: raw
+    tables:
+      - name: training_log
+        description: "生トレーニングログ。1セット=1レコード。"
+      - name: exercise_master
+        description: "種目マスタ。"
+      - name: user_master
+        description: "ユーザーマスタ。"
+      - name: exercise_request
+        description: "種目追加リクエスト。"
+      - name: notification_log
+        description: "通知送信ログ。"
