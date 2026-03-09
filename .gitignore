@@ -6,7 +6,7 @@ secrets/
 !dbt/packages.yml
 
 # Streamlit シークレット
-.streamlit/secrets.toml
+streamlit/.streamlit/secrets.toml
 
 # dbt 接続情報
 profiles.yml
