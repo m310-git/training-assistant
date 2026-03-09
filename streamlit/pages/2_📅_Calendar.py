@@ -96,9 +96,13 @@ for week in weeks:
 
 # 日付クリックで詳細表示
 st.subheader("📋 日付の詳細")
+default_date = date(year, month, 1)
+if today.year == year and today.month == month:
+    default_date = today
+
 selected_date = st.date_input(
     "日付を選択",
-    value=today,
+    value=default_date,
     min_value=first_day,
     max_value=last_day
 )
