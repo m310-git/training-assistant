@@ -1,5 +1,5 @@
 {{
-    config(materialized='table')
+    config(materialized='table', schema='mart')
 }}
 
 WITH latest_per_set AS (
