@@ -91,7 +91,7 @@ def handle_daily_notification(request):
         message = (
             f"⚠️ {row.days_since_last_any}日間トレーニングしていません！\n\n"
             f"💪 今日もトレーニングしましょう！\n"
-            f"📱 アプリを開く: https://your-app.streamlit.app"
+            f"📱 アプリを開く: https://training-assistant-m310.streamlit.app/"
         )
         try:
             send_line_message(row.line_user_id, message)
@@ -122,7 +122,7 @@ def handle_daily_notification(request):
             message = (
                 f"⚠️ 「{row.body_part_name}」のトレーニングが7日以上空いています！\n"
                 f"最後の{row.body_part_name}トレ: {row.last_training_date}\n\n"
-                f"📱 アプリを開く: https://your-app.streamlit.app"
+                f"📱 アプリを開く: https://training-assistant-m310.streamlit.app/"
             )
             try:
                 send_line_message(row.line_user_id, message)
@@ -174,7 +174,7 @@ def handle_weekly_ranking(request):
         lines.append(
             f"{icon} {r.user_name}: {r.total_volume:,.0f} kg  {change} {prev}"
         )
-    lines.append(f"\n📱 詳細を見る: https://your-app.streamlit.app")
+    lines.append(f"\n📱 詳細を見る: https://training-assistant-m310.streamlit.app/")
 
     message = "\n".join(lines)
 
@@ -231,7 +231,7 @@ def handle_monthly_ranking(request):
         lines.append(
             f"{icon} {r.user_name}: {r.total_volume:,.0f} kg  {change} {prev}"
         )
-    lines.append(f"\n📱 詳細を見る: https://your-app.streamlit.app")
+    lines.append(f"\n📱 詳細を見る: https://training-assistant-m310.streamlit.app/")
 
     message = "\n".join(lines)
 
@@ -290,7 +290,7 @@ def handle_start_notification(request):
     message = (
         f"🏋️ {user.user_name}がトレーニングを開始しました！\n"
         f"今日のメニュー: {body_part}\n\n"
-        f"📱 アプリを開く: https://your-app.streamlit.app"
+        f"📱 アプリを開く: https://training-assistant-m310.streamlit.app/"
     )
 
     for other in other_users:
