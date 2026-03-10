@@ -66,9 +66,10 @@ SELECT
     current_weight_kg,
     current_reps,
     current_rpe,
-    ROUND(suggested_weight_kg, 1) AS suggested_weight_kg,
+    -- 前回重量を下回らないようにする
+    ROUND(GREATEST(suggested_weight_kg, current_weight_kg), 1) AS suggested_weight_kg,
     suggested_reps,
-    ROUND(suggested_weight_kg * suggested_reps, 1) AS suggested_volume,
+    ROUND(GREATEST(suggested_weight_kg, current_weight_kg) * suggested_reps, 1) AS suggested_volume,
     CURRENT_DATE('Asia/Tokyo') AS suggested_date,
     'boosted_tree_v1' AS model_version
 FROM predictions

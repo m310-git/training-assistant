@@ -1,7 +1,7 @@
 import streamlit as st
 import uuid
 import pandas as pd
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 from utils.auth import check_password
 from utils.bigquery_client import query, insert_rows
 from utils.validators import validate_weight, validate_reps, validate_rpe
@@ -47,13 +47,14 @@ with col3:
         options=exercises['exercise_name'].tolist()
     )
 
-# --- 過去実績の表示 ---
+# --- 過去実績の表示（本日分を除外）---
 st.subheader("📋 直近3回の実績")
 history = query(f"""
     SELECT training_date, set_number, weight_kg, reps, rpe, volume
     FROM mart.fct_training_set
     WHERE user_id = '{user_id}'
       AND exercise_name = '{selected_ex}'
+      AND training_date < '{training_date}'
     ORDER BY training_date DESC, set_number
     LIMIT 30
 """)
@@ -118,13 +119,14 @@ else:
 # --- セット入力 ---
 st.subheader("✏️ セット入力")
 
-if 'sets' not in st.session_state:
-    st.session_state.sets = [
-        {'weight': None, 'reps': None, 'rpe': None, 'memo': '', 'saved': False}
-        for _ in range(5)
-    ]
+# 種目が変わったらセット状態をリセット
+restore_key = f"{training_date}_{selected_ex}"
+if st.session_state.get('restore_key') != restore_key:
+    st.session_state.sets = None
+    st.session_state.restored = False
+    st.session_state.restore_key = restore_key
 
-# 当日復元チェック
+# 当日の既存記録を取得
 existing = query(f"""
     SELECT log_id, set_number, weight_kg, reps, rpe, memo, created_at
     FROM raw.training_log
@@ -135,25 +137,46 @@ existing = query(f"""
     ORDER BY set_number
 """)
 
-if not existing.empty and 'restored' not in st.session_state:
-    st.warning("⚠️ 本日のこの種目の記録があります（編集可能）")
-    st.session_state.sets = []
-    for _, row in existing.iterrows():
-        created = row['created_at']
-        # created が naive の場合に備えた安全な比較
-        if created.tzinfo is None:
-            created = created.replace(tzinfo=timezone.utc)
-        editable = datetime.now(timezone.utc) < created + timedelta(hours=3)
-        st.session_state.sets.append({
-            'log_id': row['log_id'],
-            'weight': float(row['weight_kg']),
-            'reps': int(row['reps']),
-            'rpe': float(row['rpe']) if row['rpe'] else None,
-            'memo': row['memo'] or '',
-            'saved': True,
-            'editable': editable
-        })
-    st.session_state.restored = True
+# 同日中かどうかを判定
+is_today = (training_date == date.today())
+
+# セット状態の初期化・復元
+if st.session_state.get('sets') is None:
+    if not existing.empty:
+        # 既存記録を復元
+        st.session_state.sets = []
+        for _, row in existing.iterrows():
+            created = row['created_at']
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+
+            # 同日中は常に編集可能、翌日以降は3時間制限
+            if is_today:
+                editable = True
+            else:
+                editable = datetime.now(timezone.utc) < created + timedelta(hours=3)
+
+            st.session_state.sets.append({
+                'log_id': row['log_id'],
+                'weight': float(row['weight_kg']),
+                'reps': int(row['reps']),
+                'rpe': float(row['rpe']) if row['rpe'] else None,
+                'memo': row['memo'] or '',
+                'saved': True,
+                'editable': editable
+            })
+        st.session_state.restored = True
+    else:
+        # 新規：空のセットを5つ用意
+        st.session_state.sets = [
+            {'weight': None, 'reps': None, 'rpe': None, 'memo': '', 'saved': False}
+            for _ in range(5)
+        ]
+
+# 復元メッセージ
+if not existing.empty and st.session_state.get('restored'):
+    saved_count = len([s for s in st.session_state.sets if s.get('saved')])
+    st.success(f"✅ 本日の記録を復元しました（{saved_count}セット）。セットの追加・編集が可能です。")
 
 # セット入力フォーム
 total_volume = 0.0

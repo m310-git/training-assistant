@@ -60,3 +60,19 @@ notification_logへの書き込みにdataEditor権限が必要だったため変
     gcloud projects add-iam-policy-binding training-assistant-prod \
         --member="serviceAccount:sa-cf-notifier@training-assistant-prod.iam.gserviceaccount.com" \
         --role="roles/bigquery.dataEditor"
+
+
+## step9実施時の補足事項
+
+### generate_schema_name マクロの修正
+dbt run 実行時に `Invalid empty identifier` エラーが発生。
+`dbt/macros/generate_schema_name.sql` の `default_schema` が空文字列を返していたため、
+`target.schema` に修正して解決。
+
+### m_ml_suggestion のスキーマ指定漏れ
+m_ml_suggestion.sql の config に `schema='mart'` が未指定だったため、
+staging データセットに作成されていた。config に `schema='mart'` を追加して解決。
+
+### GCP権限の追加
+自分のGoogleアカウントに `roles/bigquery.admin` を付与。
+INFORMATION_SCHEMA.MODELS へのアクセスに必要だった。
