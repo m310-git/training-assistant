@@ -116,6 +116,44 @@ else:
     else:
         st.info("提案を表示するには過去の記録が必要です")
 
+def soft_delete_log(log_id):
+    """ストリーミングバッファ対応の論理削除"""
+    try:
+        # まず通常の UPDATE を試みる
+        query(f"""
+            UPDATE raw.training_log
+            SET is_deleted = TRUE, updated_at = CURRENT_TIMESTAMP()
+            WHERE log_id = '{log_id}'
+        """)
+    except Exception:
+        # ストリーミングバッファ中の場合、削除フラグ付きで新レコードを INSERT
+        original = query(f"""
+            SELECT * FROM raw.training_log
+            WHERE log_id = '{log_id}'
+            ORDER BY updated_at DESC
+            LIMIT 1
+        """)
+        if not original.empty:
+            row = original.iloc[0]
+            now = datetime.now(timezone.utc).isoformat()
+            delete_row = {
+                'log_id': row['log_id'],
+                'user_id': row['user_id'],
+                'exercise_name': row['exercise_name'],
+                'body_part': row['body_part'],
+                'training_date': str(row['training_date']),
+                'set_number': int(row['set_number']),
+                'weight_kg': float(row['weight_kg']),
+                'reps': int(row['reps']),
+                'rpe': float(row['rpe']) if row['rpe'] else None,
+                'memo': row['memo'] or '',
+                'input_source': 'streamlit',
+                'created_at': row['created_at'].isoformat() if hasattr(row['created_at'], 'isoformat') else str(row['created_at']),
+                'updated_at': now,
+                'is_deleted': True
+            }
+            insert_rows('training-assistant-prod.raw.training_log', [delete_row])
+
 # --- セット入力 ---
 st.subheader("✏️ セット入力")
 
@@ -275,7 +313,7 @@ with col_vol2:
         st.metric("前回との差分", f"{diff:+,.1f} kg ({diff_pct:+.1f}%)")
 
 # セット追加・削除ボタン
-col_btn1, col_btn2 = st.columns(2)
+col_btn1, col_btn2, col_btn3 = st.columns(3)
 with col_btn1:
     if st.button("＋ セット追加"):
         if len(st.session_state.sets) < 20:
@@ -292,11 +330,34 @@ with col_btn2:
         if len(st.session_state.sets) > 1:
             last = st.session_state.sets[-1]
             if last.get('log_id'):
-                # 論理削除
-                query(f"""
-                    UPDATE raw.training_log
-                    SET is_deleted = TRUE, updated_at = CURRENT_TIMESTAMP()
-                    WHERE log_id = '{last["log_id"]}'
-                """)
+                soft_delete_log(last['log_id'])
             st.session_state.sets.pop()
+            st.rerun()
+
+with col_btn3:
+    saved_sets = [s for s in st.session_state.sets if s.get('log_id')]
+    if saved_sets:
+        if st.button("🗑️ この種目の記録を全削除", type="secondary"):
+            st.session_state.confirm_delete_all = True
+
+# 全削除の確認ダイアログ
+if st.session_state.get('confirm_delete_all', False):
+    st.warning(f"⚠️ {selected_ex}の本日の記録を全て削除しますか？この操作は取り消せません。")
+    col_yes, col_no = st.columns(2)
+    with col_yes:
+        if st.button("✅ はい、全削除する"):
+            for s in st.session_state.sets:
+                if s.get('log_id'):
+                    soft_delete_log(s['log_id'])
+            st.session_state.sets = [
+                {'weight': None, 'reps': None, 'rpe': None, 'memo': '', 'saved': False}
+                for _ in range(5)
+            ]
+            st.session_state.confirm_delete_all = False
+            st.session_state.restored = False
+            st.success("✅ 全て削除しました")
+            st.rerun()
+    with col_no:
+        if st.button("❌ キャンセル"):
+            st.session_state.confirm_delete_all = False
             st.rerun()
