@@ -35,3 +35,16 @@ models:
       - name: volume
         tests: [not_null]
 
+  - name: m_ml_suggestion
+    description: "BigQuery ML予測結果。次回の推奨重量・回数。"
+    columns:
+      - name: user_id
+        tests: [not_null]
+      - name: exercise_id
+        tests: [not_null]
+      - name: suggested_weight_kg
+        tests: [not_null]
+      - name: suggested_reps
+        tests: [not_null]
+      - name: model_version
+        tests: [not_null]
