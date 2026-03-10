@@ -1,6 +1,7 @@
 import streamlit as st
 import uuid
-from datetime import datetime, timedelta
+import pandas as pd
+from datetime import datetime, timedelta, timezone
 from utils.auth import check_password
 from utils.bigquery_client import query, insert_rows
 from utils.validators import validate_weight, validate_reps, validate_rpe
@@ -74,16 +75,20 @@ else:
 # --- 提案の表示 ---
 st.subheader("💡 今回の提案")
 
-# MLの提案を取得（フォールバック含む）
-suggestion = query(f"""
-    SELECT set_number, suggested_weight_kg, suggested_reps, suggested_volume
-    FROM mart.m_ml_suggestion
-    WHERE user_id = '{user_id}'
-      AND exercise_name = '{selected_ex}'
-    ORDER BY set_number
-""")
+# MLの提案を取得（テーブルが存在しない場合はスキップ）
+suggestion = None
+try:
+    suggestion = query(f"""
+        SELECT set_number, suggested_weight_kg, suggested_reps, suggested_volume
+        FROM mart.m_ml_suggestion
+        WHERE user_id = '{user_id}'
+          AND exercise_name = '{selected_ex}'
+        ORDER BY set_number
+    """)
+except Exception:
+    suggestion = None
 
-if not suggestion.empty:
+if suggestion is not None and not suggestion.empty:
     st.markdown("🤖 **AIモデルによる提案**")
     st.dataframe(suggestion.reset_index(drop=True), hide_index=True, use_container_width=True)
     total_suggested = suggestion['suggested_volume'].sum()
@@ -104,7 +109,6 @@ else:
                 'suggested_reps': sr,
                 'suggested_volume': round(sw * sr, 1)
             })
-        import pandas as pd
         fb_df = pd.DataFrame(fallback_data)
         st.dataframe(fb_df, hide_index=True, use_container_width=True)
         st.info("ℹ️ データが蓄積されるとAIモデルによる提案に切り替わります")
@@ -115,7 +119,10 @@ else:
 st.subheader("✏️ セット入力")
 
 if 'sets' not in st.session_state:
-    st.session_state.sets = [{'weight': None, 'reps': None, 'rpe': None, 'memo': '', 'saved': False}]
+    st.session_state.sets = [
+        {'weight': None, 'reps': None, 'rpe': None, 'memo': '', 'saved': False}
+        for _ in range(5)
+    ]
 
 # 当日復元チェック
 existing = query(f"""
@@ -133,7 +140,10 @@ if not existing.empty and 'restored' not in st.session_state:
     st.session_state.sets = []
     for _, row in existing.iterrows():
         created = row['created_at']
-        editable = datetime.utcnow() < created + timedelta(hours=3)
+        # created が naive の場合に備えた安全な比較
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        editable = datetime.now(timezone.utc) < created + timedelta(hours=3)
         st.session_state.sets.append({
             'log_id': row['log_id'],
             'weight': float(row['weight_kg']),
@@ -160,19 +170,22 @@ for i, s in enumerate(st.session_state.sets):
     with cols[1]:
         w = st.number_input(
             "重量(kg)", min_value=0.0, max_value=500.0, step=0.5,
-            value=s['weight'], key=f"w_{i}", disabled=not editable
+            value=s['weight'] if s['weight'] is not None else 0.0,
+            key=f"w_{i}", disabled=not editable
         )
 
     with cols[2]:
         r = st.number_input(
             "回数", min_value=1, max_value=100, step=1,
-            value=s['reps'], key=f"r_{i}", disabled=not editable
+            value=s['reps'] if s['reps'] is not None else 1,
+            key=f"r_{i}", disabled=not editable
         )
 
     with cols[3]:
         rpe = st.number_input(
             "RPE", min_value=6.0, max_value=10.0, step=0.5,
-            value=s['rpe'], key=f"rpe_{i}", disabled=not editable
+            value=s['rpe'] if s['rpe'] is not None else 8.0,
+            key=f"rpe_{i}", disabled=not editable
         )
 
     with cols[4]:
@@ -199,7 +212,7 @@ for i, s in enumerate(st.session_state.sets):
 
         if valid_w and valid_r and valid_rpe:
             log_id = s.get('log_id', str(uuid.uuid4()))
-            now = datetime.utcnow().isoformat()
+            now = datetime.now(timezone.utc).isoformat()
 
             row = {
                 'log_id': log_id,
