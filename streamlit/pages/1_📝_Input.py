@@ -60,10 +60,9 @@ div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
 user_id = st.session_state.user_id
 
 # --- 日付・部位・種目の選択 ---
-col1, col2, col3 = st.columns(3)
+training_date = st.date_input("日付", value=datetime.now())
 
-with col1:
-    training_date = st.date_input("日付", value=datetime.now())
+cols = st.columns(2)
 
 body_parts = query("""
     SELECT body_part_id, body_part_name
@@ -71,7 +70,7 @@ body_parts = query("""
     ORDER BY sort_order
 """)
 
-with col2:
+with cols[0]:
     selected_bp = st.selectbox(
         "部位",
         options=body_parts['body_part_id'].tolist(),
@@ -85,7 +84,7 @@ exercises = query(f"""
     ORDER BY display_order
 """)
 
-with col3:
+with cols[1]:
     selected_ex = st.selectbox(
         "種目",
         options=exercises['exercise_name'].tolist()
@@ -242,24 +241,24 @@ for i, s in enumerate(st.session_state.sets):
 
     st.markdown(f"**{set_num}** {status}")
 
-    cols = st.columns([3, 2, 5])
-    with cols[0]:
+    col1, col2 = st.columns(2)
+    with col1:
         w = st.number_input(
             "kg", min_value=0.0, max_value=500.0, step=0.5,
             value=s['weight'] if s['weight'] is not None else 0.0,
             key=f"w_{i}", disabled=not editable
         )
-    with cols[1]:
+    with col2:
         r = st.number_input(
             "回", min_value=1, max_value=100, step=1,
             value=s['reps'] if s['reps'] is not None else 1,
             key=f"r_{i}", disabled=not editable
         )
-    with cols[2]:
-        memo = st.text_input(
-            "メモ", value=s['memo'], key=f"memo_{i}",
-            max_chars=200, disabled=not editable
-        )
+
+    memo = st.text_input(
+        "メモ", value=s.get('memo', ''), key=f"memo_{i}",
+        max_chars=200, disabled=not editable
+    )
 
     if w and r:
         total_volume += w * r
