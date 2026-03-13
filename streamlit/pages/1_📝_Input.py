@@ -62,7 +62,7 @@ user_id = st.session_state.user_id
 # --- 日付・部位・種目の選択 ---
 training_date = st.date_input("日付", value=datetime.now())
 
-cols = st.columns(2)
+exercises_col1, exercises_col2 = st.columns([2, 5])
 
 body_parts = query("""
     SELECT body_part_id, body_part_name
@@ -70,7 +70,7 @@ body_parts = query("""
     ORDER BY sort_order
 """)
 
-with cols[0]:
+with exercises_col1:
     selected_bp = st.selectbox(
         "部位",
         options=body_parts['body_part_id'].tolist(),
@@ -84,7 +84,7 @@ exercises = query(f"""
     ORDER BY display_order
 """)
 
-with cols[1]:
+with exercises_col2:
     selected_ex = st.selectbox(
         "種目",
         options=exercises['exercise_name'].tolist()
