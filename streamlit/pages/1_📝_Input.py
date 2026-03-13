@@ -14,16 +14,45 @@ st.title("📝 トレーニング入力")
 # スマホ対応CSS（ページ全体に適用）
 st.markdown("""
 <style>
-[data-testid="stHorizontalBlock"] {
+/* 全ての横並びブロックを強制 */
+div[data-testid="stHorizontalBlock"] {
     flex-wrap: nowrap !important;
-    gap: 0.3rem !important;
+    gap: 0.2rem !important;
+    overflow: hidden !important;
 }
-[data-testid="stNumberInput"] label,
-[data-testid="stTextInput"] label,
-[data-testid="stDateInput"] label,
-[data-testid="stSelectbox"] label {
+div[data-testid="stHorizontalBlock"] > div {
+    min-width: 0 !important;
+    overflow: hidden !important;
+}
+/* ラベルを小さく */
+label {
     font-size: 12px !important;
     margin-bottom: 0px !important;
+}
+/* number_input の幅を縮小 */
+input[type="number"] {
+    font-size: 14px !important;
+    padding: 4px 8px !important;
+}
+/* text_input の幅を縮小 */
+input[type="text"] {
+    font-size: 14px !important;
+    padding: 4px 8px !important;
+}
+/* date_input を縮小 */
+div[data-testid="stDateInput"] {
+    min-width: 0 !important;
+}
+/* selectbox を縮小 */
+div[data-testid="stSelectbox"] {
+    min-width: 0 !important;
+}
+/* metric を小さく */
+div[data-testid="stMetric"] label {
+    font-size: 11px !important;
+}
+div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
+    font-size: 20px !important;
 }
 </style>
 """, unsafe_allow_html=True)
