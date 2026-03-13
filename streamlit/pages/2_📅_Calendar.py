@@ -112,32 +112,50 @@ if not cal_data.empty:
     for _, row in cal_data.iterrows():
         cal_dict[row['training_date']] = row
 
-# 曜日ヘッダー
-day_names = ['月', '火', '水', '木', '金', '土', '日']
-header_cols = st.columns(7)
-for i, name in enumerate(day_names):
-    with header_cols[i]:
-        st.markdown(f"**{name}**")
+# カレンダー表示（スマホ対応：HTML テーブル）
+if not cal_data.empty:
+    for _, row in cal_data.iterrows():
+        cal_dict[row['training_date']] = row
 
-st.markdown("---")
+cal_obj = calendar.Calendar(firstweekday=0)
+weeks = cal_obj.monthdayscalendar(year, month)
 
-cal = calendar.Calendar(firstweekday=0)
-weeks = cal.monthdayscalendar(year, month)
+# HTMLテーブルで表示
+html = """
+<style>
+.cal-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 14px; }
+.cal-table th { padding: 4px; font-weight: bold; border-bottom: 2px solid #ddd; }
+.cal-table td { padding: 6px 2px; border-bottom: 1px solid #eee; min-width: 30px; }
+.cal-today { background-color: #FF6B6B; color: white; border-radius: 50%; padding: 2px 6px; }
+.cal-trained { color: #28a745; font-weight: bold; }
+.cal-empty { color: #ccc; }
+</style>
+<table class="cal-table">
+<tr><th>月</th><th>火</th><th>水</th><th>木</th><th>金</th><th>土</th><th>日</th></tr>
+"""
 
 for week in weeks:
-    cols = st.columns(7)
+    html += "<tr>"
     for i, day_num in enumerate(week):
-        with cols[i]:
-            if day_num == 0:
-                st.write("")
+        if day_num == 0:
+            html += '<td></td>'
+        else:
+            d = date(year, month, day_num)
+            if d == today:
+                day_str = f'<span class="cal-today">{day_num}</span>'
             else:
-                d = date(year, month, day_num)
-                if d in cal_dict:
-                    bp = cal_dict[d]['body_parts']
-                    st.markdown(f"**{day_num}**")
-                    st.markdown(f"🟢{bp}")
-                else:
-                    st.markdown(f"{day_num}")
+                day_str = str(day_num)
+
+            if d in cal_dict:
+                bp = cal_dict[d]['body_parts']
+                html += f'<td class="cal-trained">{day_str}<br>🟢{bp}</td>'
+            else:
+                html += f'<td>{day_str}</td>'
+    html += "</tr>"
+
+html += "</table>"
+
+st.markdown(html, unsafe_allow_html=True)
 
 # 日付クリックで詳細表示
 st.subheader("📋 日付の詳細")
