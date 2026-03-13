@@ -213,26 +213,20 @@ for i, s in enumerate(st.session_state.sets):
 
     st.markdown(f"**{set_num}** {status}")
 
-    cols = st.columns([3, 2, 2, 4])
+    cols = st.columns([3, 2, 5])
     with cols[0]:
         w = st.number_input(
-            "重量(kg)", min_value=0.0, max_value=500.0, step=0.5,
+            "kg", min_value=0.0, max_value=500.0, step=0.5,
             value=s['weight'] if s['weight'] is not None else 0.0,
             key=f"w_{i}", disabled=not editable
         )
     with cols[1]:
         r = st.number_input(
-            "回数", min_value=1, max_value=100, step=1,
+            "回", min_value=1, max_value=100, step=1,
             value=s['reps'] if s['reps'] is not None else 1,
             key=f"r_{i}", disabled=not editable
         )
     with cols[2]:
-        rpe = st.number_input(
-            "RPE", min_value=6.0, max_value=10.0, step=0.5,
-            value=s['rpe'] if s['rpe'] is not None else 8.0,
-            key=f"rpe_{i}", disabled=not editable
-        )
-    with cols[3]:
         memo = st.text_input(
             "メモ", value=s['memo'], key=f"memo_{i}",
             max_chars=200, disabled=not editable
@@ -244,9 +238,8 @@ for i, s in enumerate(st.session_state.sets):
     if w and r and w > 0 and r > 0 and not s['saved'] and editable:
         valid_w, _ = validate_weight(w)
         valid_r, _ = validate_reps(r)
-        valid_rpe, _ = validate_rpe(rpe)
 
-        if valid_w and valid_r and valid_rpe:
+        if valid_w and valid_r:
             log_id = s.get('log_id', str(uuid.uuid4()))
             now = datetime.now(timezone.utc).isoformat()
 
@@ -259,7 +252,7 @@ for i, s in enumerate(st.session_state.sets):
                 'set_number': set_num,
                 'weight_kg': float(w),
                 'reps': int(r),
-                'rpe': float(rpe) if rpe else None,
+                'rpe': None,
                 'memo': memo,
                 'input_source': 'streamlit',
                 'created_at': now,
