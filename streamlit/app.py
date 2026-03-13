@@ -19,16 +19,14 @@ user_name = st.session_state.user_name
 st.title(f"🏋️ {user_name}さんのトレーニング")
 
 # ============================================
-# 1. 今週のカレンダー
+# 1. 今週のトレーニング
 # ============================================
 st.subheader("📅 今週のトレーニング")
 
 today = date.today()
-# 今週の月曜日を取得
 monday = today - timedelta(days=today.weekday())
 sunday = monday + timedelta(days=6)
 
-# 今週のデータ取得
 week_data = query(f"""
     WITH deduped AS (
         SELECT
@@ -57,37 +55,90 @@ if not week_data.empty:
     for _, row in week_data.iterrows():
         week_dict[row['training_date']] = row
 
-# 曜日表示
 day_names = ['月', '火', '水', '木', '金', '土', '日']
-cols = st.columns(7)
+
+# HTML テーブルで横並び表示
+html = """
+<style>
+.week-table { width: 100%; border-collapse: collapse; text-align: center; font-size: 13px; }
+.week-table th { padding: 4px 2px; font-weight: bold; color: #555; }
+.week-table td { padding: 4px 2px; }
+.week-today { background-color: #FF6B6B; color: white; border-radius: 50%; padding: 1px 5px; font-weight: bold; }
+.week-trained { color: #28a745; font-size: 11px; }
+.week-rest { color: #ccc; }
+</style>
+<table class="week-table">
+<tr>
+"""
+
+for name in day_names:
+    html += f"<th>{name}</th>"
+html += "</tr><tr>"
 
 for i in range(7):
     d = monday + timedelta(days=i)
-    with cols[i]:
-        # 今日はハイライト
-        if d == today:
-            st.markdown(f"**📍{day_names[i]}**")
-        else:
-            st.markdown(f"**{day_names[i]}**")
+    day_num = d.day
 
-        st.markdown(f"{d.day}日")
+    if d == today:
+        day_html = f'<span class="week-today">{day_num}</span>'
+    else:
+        day_html = str(day_num)
 
-        if d in week_dict:
-            bp = week_dict[d]['body_parts']
-            vol = week_dict[d]['total_volume']
-            st.markdown(f"🟢{bp}")
-            st.caption(f"{vol:,.0f}kg")
-        else:
-            if d <= today:
-                st.markdown("ー")
-            else:
-                st.markdown("")
+    if d in week_dict:
+        bp = week_dict[d]['body_parts']
+        vol = week_dict[d]['total_volume']
+        html += f'<td>{day_html}<br><span class="week-trained">🟢{bp}<br>{vol:,.0f}kg</span></td>'
+    else:
+        html += f'<td>{day_html}<br><span class="week-rest">ー</span></td>'
+
+html += "</tr></table>"
+
+st.markdown(html, unsafe_allow_html=True)
 
 # 今週のサマリー
 if week_dict:
     total_days = len(week_dict)
     total_vol = sum(row['total_volume'] for row in week_dict.values())
-    st.markdown(f"**今週: {total_days}日 / 総負荷量: {total_vol:,.0f} kg**")
+    st.success(f"📊 今週: {total_days}日 / 総負荷量: {total_vol:,.0f} kg")
+else:
+    st.info("今週はまだトレーニングしていません 💪")
+
+# 先週のサマリー
+last_monday = monday - timedelta(days=7)
+last_sunday = monday - timedelta(days=1)
+
+last_week_data = query(f"""
+    WITH deduped AS (
+        SELECT
+            *,
+            ROW_NUMBER() OVER (
+                PARTITION BY log_id
+                ORDER BY updated_at DESC
+            ) AS rn
+        FROM raw.training_log
+        WHERE user_id = '{user_id}'
+          AND training_date BETWEEN '{last_monday}' AND '{last_sunday}'
+    )
+    SELECT
+        COUNT(DISTINCT training_date) AS training_days,
+        SUM(ROUND(weight_kg * reps, 1)) AS total_volume
+    FROM deduped
+    WHERE rn = 1 AND is_deleted = FALSE
+""")
+
+if not last_week_data.empty and last_week_data['total_volume'].iloc[0]:
+    lw_days = int(last_week_data['training_days'].iloc[0])
+    lw_vol = last_week_data['total_volume'].iloc[0]
+
+    # 今週との比較
+    if week_dict:
+        diff = total_vol - lw_vol
+        diff_pct = (diff / lw_vol * 100) if lw_vol > 0 else 0
+        st.caption(f"先週: {lw_days}日 / {lw_vol:,.0f} kg（差分: {diff:+,.0f} kg / {diff_pct:+.1f}%）")
+    else:
+        st.caption(f"先週: {lw_days}日 / {lw_vol:,.0f} kg")
+else:
+    st.caption("先週: 記録なし")
 
 # ============================================
 # 2. トレーニング入力ボタン
