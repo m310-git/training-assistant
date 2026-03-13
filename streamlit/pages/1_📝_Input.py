@@ -29,21 +29,12 @@ label {
     font-size: 12px !important;
     margin-bottom: 0px !important;
 }
-/* number_input の幅を縮小 */
-input[type="number"] {
+/* input を縮小 */
+input[type="number"], input[type="text"] {
     font-size: 14px !important;
     padding: 4px 8px !important;
 }
-/* text_input の幅を縮小 */
-input[type="text"] {
-    font-size: 14px !important;
-    padding: 4px 8px !important;
-}
-/* date_input を縮小 */
-div[data-testid="stDateInput"] {
-    min-width: 0 !important;
-}
-/* selectbox を縮小 */
+div[data-testid="stDateInput"],
 div[data-testid="stSelectbox"] {
     min-width: 0 !important;
 }
@@ -53,6 +44,10 @@ div[data-testid="stMetric"] label {
 }
 div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
     font-size: 20px !important;
+}
+/* selectbox の中身を縮小 */
+div[data-testid="stSelectbox"] > div {
+    font-size: 13px !important;
 }
 </style>
 """, unsafe_allow_html=True)
