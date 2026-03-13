@@ -11,6 +11,23 @@ if not check_password():
 
 st.title("📝 トレーニング入力")
 
+# スマホ対応CSS（ページ全体に適用）
+st.markdown("""
+<style>
+[data-testid="stHorizontalBlock"] {
+    flex-wrap: nowrap !important;
+    gap: 0.3rem !important;
+}
+[data-testid="stNumberInput"] label,
+[data-testid="stTextInput"] label,
+[data-testid="stDateInput"] label,
+[data-testid="stSelectbox"] label {
+    font-size: 12px !important;
+    margin-bottom: 0px !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 user_id = st.session_state.user_id
 
 # --- 日付・部位・種目の選択 ---
@@ -135,22 +152,6 @@ def soft_delete_log(log_id):
 
 # --- セット入力 ---
 st.subheader("✏️ セット入力")
-
-# スマホでも横並びを強制するCSS
-st.markdown("""
-<style>
-[data-testid="stHorizontalBlock"] {
-    flex-wrap: nowrap !important;
-    gap: 0.3rem !important;
-}
-[data-testid="stNumberInput"] label {
-    font-size: 12px !important;
-}
-[data-testid="stTextInput"] label {
-    font-size: 12px !important;
-}
-</style>
-""", unsafe_allow_html=True)
 
 # 種目が変わったらセット状態をリセット
 restore_key = f"{training_date}_{selected_ex}"
@@ -287,49 +288,32 @@ with col_vol2:
         st.metric("前回との差分", f"{diff:+,.1f} kg ({diff_pct:+.1f}%)")
 
 # セット追加・削除ボタン
-if st.button("＋ セット追加", use_container_width=True):
-    if len(st.session_state.sets) < 20:
-        st.session_state.sets.append({
-            'weight': None, 'reps': None, 'rpe': None,
-            'memo': '', 'saved': False
-        })
-        st.rerun()
-    else:
-        st.warning("セット数の上限（20）に達しました")
-
-if st.button("🗑 最終セット削除", use_container_width=True):
-    if len(st.session_state.sets) > 1:
-        last = st.session_state.sets[-1]
-        if last.get('log_id'):
-            soft_delete_log(last['log_id'])
-        st.session_state.sets.pop()
-        st.rerun()
-
-saved_sets = [s for s in st.session_state.sets if s.get('log_id')]
-if saved_sets:
-    if st.button("🗑️ この種目の記録を全削除", use_container_width=True, type="secondary"):
-        st.session_state.confirm_delete_all = True
-
-if st.session_state.get('confirm_delete_all', False):
-    st.warning(f"⚠️ {selected_ex}の本日の記録を全て削除しますか？")
-    col_yes, col_no = st.columns(2)
-    with col_yes:
-        if st.button("✅ はい", use_container_width=True):
-            for s in st.session_state.sets:
-                if s.get('log_id'):
-                    soft_delete_log(s['log_id'])
-            st.session_state.sets = [
-                {'weight': None, 'reps': None, 'rpe': None, 'memo': '', 'saved': False}
-                for _ in range(5)
-            ]
-            st.session_state.confirm_delete_all = False
-            st.session_state.restored = False
-            st.success("✅ 全て削除しました")
+col_btn1, col_btn2, col_btn3 = st.columns(3)
+with col_btn1:
+    if st.button("＋ 追加", use_container_width=True):
+        if len(st.session_state.sets) < 20:
+            st.session_state.sets.append({
+                'weight': None, 'reps': None, 'rpe': None,
+                'memo': '', 'saved': False
+            })
             st.rerun()
-    with col_no:
-        if st.button("❌ キャンセル", use_container_width=True):
-            st.session_state.confirm_delete_all = False
+        else:
+            st.warning("上限（20）です")
+
+with col_btn2:
+    if st.button("🗑 末尾削除", use_container_width=True):
+        if len(st.session_state.sets) > 1:
+            last = st.session_state.sets[-1]
+            if last.get('log_id'):
+                soft_delete_log(last['log_id'])
+            st.session_state.sets.pop()
             st.rerun()
+
+with col_btn3:
+    saved_sets = [s for s in st.session_state.sets if s.get('log_id')]
+    if saved_sets:
+        if st.button("🗑 全削除", use_container_width=True, type="secondary"):
+            st.session_state.confirm_delete_all = True
 
 # --- 直近3回の実績（一番下に表示）---
 st.markdown("---")
