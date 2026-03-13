@@ -6,7 +6,7 @@ from utils.bigquery_client import query
 if not check_password():
     st.stop()
 
-st.title("👥 ソーシャル")
+st.subheader("👥 ソーシャル")
 
 # --- 記録更新フィード（mart参照のまま：日次更新でOK）---
 st.subheader("🔔 記録更新フィード")

@@ -12,7 +12,7 @@ if not st.session_state.get('is_admin', False):
     st.error("⛔ この画面は管理者のみアクセスできます")
     st.stop()
 
-st.title("⚙️ 管理者画面")
+st.subheader("⚙️ 管理者画面")
 
 # --- 承認待ちリクエスト ---
 st.subheader("📬 承認待ちリクエスト")

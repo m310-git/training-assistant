@@ -7,7 +7,7 @@ from utils.bigquery_client import query, insert_rows
 if not check_password():
     st.stop()
 
-st.title("➕ 種目追加リクエスト")
+st.subheader("➕ 種目追加リクエスト")
 
 user_id = st.session_state.user_id
 

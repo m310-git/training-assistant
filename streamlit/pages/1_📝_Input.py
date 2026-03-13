@@ -9,7 +9,7 @@ from utils.validators import validate_weight, validate_reps, validate_rpe
 if not check_password():
     st.stop()
 
-st.title("📝 トレーニング入力")
+st.subheader("📝 トレーニング入力")
 
 # スマホ対応CSS（ページ全体に適用）
 st.markdown("""

@@ -5,7 +5,7 @@ from utils.bigquery_client import query
 if not check_password():
     st.stop()
 
-st.title("🏆 ランキング")
+st.subheader("🏆 ランキング")
 
 # 期間タブ
 tab_weekly, tab_monthly, tab_alltime = st.tabs(["週間", "月間", "全期間"])

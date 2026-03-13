@@ -6,7 +6,7 @@ from utils.bigquery_client import query
 if not check_password():
     st.stop()
 
-st.title("📊 ダッシュボード")
+st.subheader("📊 ダッシュボード")
 
 # ユーザー切り替え
 users = query("SELECT user_id, user_name FROM mart.d_user")
