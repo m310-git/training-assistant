@@ -479,6 +479,7 @@ if not history.empty:
             st.table(
                 day_data[['set_number', 'weight_kg', 'reps']]
                 .rename(columns={'set_number': 'set', 'weight_kg': 'kg'})
+                .assign(kg=lambda df: df['kg'].round(1))
                 .reset_index(drop=True)
                 .set_index('set')
             )
