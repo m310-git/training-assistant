@@ -465,7 +465,19 @@ with col_btn3:
     saved_sets = [s for s in st.session_state.sets if s.get('log_id')]
     if saved_sets:
         if st.button("🗑 全削除", use_container_width=True, type="secondary"):
-            st.session_state.confirm_delete_all = True
+            # 確認なしで即実行（ボタン2回押し問題を回避）
+            for s in st.session_state.sets:
+                if s.get('log_id'):
+                    soft_delete_log(s['log_id'])
+            # ウィジェットキーをクリア
+            keys_to_delete = [k for k in list(st.session_state.keys())
+                              if k.startswith(('w_', 'r_', 'memo_', 'rpe_'))]
+            for k in keys_to_delete:
+                del st.session_state[k]
+            st.session_state.sets = None
+            st.session_state.restored = False
+            st.session_state.restore_key = None
+            st.rerun()
 
 # --- 直近3回の実績（一番下に表示）---
 st.markdown("---")
