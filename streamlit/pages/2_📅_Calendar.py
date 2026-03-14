@@ -204,15 +204,21 @@ if selected_date in cal_dict:
                 use_container_width=True
             )
 
-    # 編集ボタン（自分の記録 & 同日のみ）
+    # 編集ボタン
     if selected_user == st.session_state.user_id:
         is_today = (selected_date == date.today())
         if is_today:
-            if st.button("✏️ 編集する"):
+            if st.button("✏️ 編集する", use_container_width=True):
+                # セッション状態をクリアして Input で再取得させる
+                if 'sets' in st.session_state:
+                    del st.session_state['sets']
+                if 'restore_key' in st.session_state:
+                    del st.session_state['restore_key']
+                if 'restored' in st.session_state:
+                    del st.session_state['restored']
                 st.session_state.edit_date = selected_date
                 st.switch_page("pages/1_📝_Input.py")
         else:
-            # 過去日は3時間以内のみ
             created_check = query(f"""
                 SELECT MIN(created_at) AS earliest
                 FROM raw.training_log
@@ -226,8 +232,12 @@ if selected_date in cal_dict:
                 if earliest.tzinfo is None:
                     earliest = earliest.tz_localize('UTC')
                 if datetime.now(earliest.tzinfo) < earliest + timedelta(hours=3):
-                    if st.button("✏️ 編集する"):
+                    if st.button("✏️ 編集する", use_container_width=True):
+                        if 'sets' in st.session_state:
+                            del st.session_state['sets']
+                        if 'restore_key' in st.session_state:
+                            del st.session_state['restore_key']
+                        if 'restored' in st.session_state:
+                            del st.session_state['restored']
                         st.session_state.edit_date = selected_date
                         st.switch_page("pages/1_📝_Input.py")
-else:
-    st.info("この日のトレーニング記録はありません")

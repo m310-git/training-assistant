@@ -183,13 +183,23 @@ if st.session_state.get('restore_key') != restore_key:
     st.session_state.restored = False
     st.session_state.restore_key = restore_key
 
+# 当日の既存記録を取得（Streaming Buffer 対応）
 existing = query(f"""
+    WITH deduped AS (
+        SELECT
+            *,
+            ROW_NUMBER() OVER (
+                PARTITION BY log_id
+                ORDER BY updated_at DESC
+            ) AS rn
+        FROM raw.training_log
+        WHERE user_id = '{user_id}'
+          AND exercise_name = '{selected_ex}'
+          AND training_date = '{training_date}'
+    )
     SELECT log_id, set_number, weight_kg, reps, rpe, memo, created_at
-    FROM raw.training_log
-    WHERE user_id = '{user_id}'
-      AND exercise_name = '{selected_ex}'
-      AND training_date = '{training_date}'
-      AND is_deleted = FALSE
+    FROM deduped
+    WHERE rn = 1 AND is_deleted = FALSE
     ORDER BY set_number
 """)
 
@@ -217,10 +227,46 @@ if st.session_state.get('sets') is None:
             })
         st.session_state.restored = True
     else:
-        st.session_state.sets = [
-            {'weight': None, 'reps': None, 'rpe': None, 'memo': '', 'saved': False}
-            for _ in range(5)
-        ]
+        # Streaming Buffer 対策：2秒待ってリトライ
+        import time
+        time.sleep(2)
+        existing_retry = query(f"""
+            WITH deduped AS (
+                SELECT
+                    *,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY log_id
+                        ORDER BY updated_at DESC
+                    ) AS rn
+                FROM raw.training_log
+                WHERE user_id = '{user_id}'
+                  AND exercise_name = '{selected_ex}'
+                  AND training_date = '{training_date}'
+            )
+            SELECT log_id, set_number, weight_kg, reps, rpe, memo, created_at
+            FROM deduped
+            WHERE rn = 1 AND is_deleted = FALSE
+            ORDER BY set_number
+        """)
+
+        if not existing_retry.empty:
+            st.session_state.sets = []
+            for _, row in existing_retry.iterrows():
+                st.session_state.sets.append({
+                    'log_id': row['log_id'],
+                    'weight': float(row['weight_kg']),
+                    'reps': int(row['reps']),
+                    'rpe': float(row['rpe']) if row['rpe'] else None,
+                    'memo': row['memo'] or '',
+                    'saved': True,
+                    'editable': True
+                })
+            st.session_state.restored = True
+        else:
+            st.session_state.sets = [
+                {'weight': None, 'reps': None, 'rpe': None, 'memo': '', 'saved': False}
+                for _ in range(5)
+            ]
 
 if not existing.empty and st.session_state.get('restored'):
     saved_count = len([s for s in st.session_state.sets if s.get('saved')])
