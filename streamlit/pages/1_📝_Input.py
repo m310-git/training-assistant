@@ -332,7 +332,7 @@ for i, s in enumerate(st.session_state.sets):
     editable = s.get('editable', True)
     status = "✅" if s['saved'] else ""
 
-    c0, c1, c2 = st.columns([1, 4, 4])
+    c0, c1, c2, c3 = st.columns([1, 3, 2, 4])
     with c0:
         st.markdown(f"{set_num}{status}")
     with c1:
@@ -349,19 +349,16 @@ for i, s in enumerate(st.session_state.sets):
             key=f"r_{key_prefix}_{i}", disabled=not editable,
             label_visibility="visible" if i == 0 else "collapsed"
         )
+    with c3:
+        memo = st.text_input(
+            "memo", value=s.get('memo', ''),
+            key=f"memo_{key_prefix}_{i}",
+            max_chars=200, disabled=not editable,
+            label_visibility="visible" if i == 0 else "collapsed"
+        )
 
     if w and r:
         total_volume += w * r
-
-# メモは折りたたみ
-with st.expander("📝 メモを入力/確認", expanded=False):
-    for i, s in enumerate(st.session_state.sets):
-        editable = s.get('editable', True)
-        st.text_input(
-            f"Set {i+1}", value=s.get('memo', ''),
-            key=f"memo_{key_prefix}_{i}",
-            max_chars=200, disabled=not editable
-        )
 
 # 保存ボタン
 if st.button("💾 保存", use_container_width=True, type="primary"):
