@@ -106,7 +106,7 @@ with exercises_col2:
 
 # --- データ取得（表示は後で使う）---
 history = query(f"""
-    SELECT training_date, set_number, weight_kg, reps, rpe, volume
+    SELECT training_date, set_number, weight_kg, reps, rpe, volume, IFNULL(memo, '') AS memo
     FROM mart.fct_training_set
     WHERE user_id = '{user_id}'
       AND exercise_name = '{selected_ex}'
