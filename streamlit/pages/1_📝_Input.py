@@ -477,11 +477,11 @@ if not history.empty:
         total_vol = day_data['volume'].sum()
         with st.expander(f"■ {d}　総負荷量: {total_vol:,.1f} kg"):
             st.table(
-                day_data[['set_number', 'weight_kg', 'reps']]
+                day_data[['set_number', 'weight_kg', 'reps', 'memo']]
                 .rename(columns={'set_number': 'set', 'weight_kg': 'kg'})
-                .assign(kg=lambda df: df['kg'].round(1))
                 .reset_index(drop=True)
                 .set_index('set')
+                .style.format({'kg': '{:.2f}', 'reps': '{:.0f}'})
             )
 else:
     st.info("この種目の記録はまだありません")
