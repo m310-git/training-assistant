@@ -1,6 +1,6 @@
 import streamlit as st
 from datetime import date, timedelta
-from utils.auth import check_password, is_logged_in
+from utils.auth import is_logged_in, check_password, logout
 from utils.bigquery_client import query
 
 st.set_page_config(
@@ -215,7 +215,7 @@ with col4:
 st.markdown("---")
 if is_logged_in():
     if st.button("🚪 ログアウト", use_container_width=True):
-        st.session_state.clear()
+        logout()
         st.rerun()
 else:
     if st.button("🔐 ログイン", use_container_width=True):

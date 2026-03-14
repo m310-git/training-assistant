@@ -2,12 +2,16 @@ import streamlit as st
 import uuid
 import pandas as pd
 from datetime import datetime, timedelta, timezone, date
-from utils.auth import is_logged_in, require_login_for_action, get_user_id_or_default
+from utils.auth import is_logged_in, require_login_for_action
 from utils.bigquery_client import query, insert_rows
 
 st.subheader("📝 トレーニング入力")
 
-user_id = get_user_id_or_default()
+# user_id の取得部分を以下に変更
+if is_logged_in():
+    user_id = st.session_state.user_id
+else:
+    user_id = 'user_001'  # 閲覧用デフォルト
 
 if not is_logged_in():
     st.info("💡 データの保存にはログインが必要です")
