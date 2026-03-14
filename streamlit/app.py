@@ -40,14 +40,15 @@ week_data = query(f"""
           AND training_date BETWEEN '{monday}' AND '{sunday}'
     )
     SELECT
-        training_date,
-        STRING_AGG(DISTINCT body_part, ', ') AS body_parts,
-        SUM(ROUND(weight_kg * reps, 1)) AS total_volume,
-        COUNT(DISTINCT exercise_name) AS exercise_count
-    FROM deduped
-    WHERE rn = 1 AND is_deleted = FALSE
-    GROUP BY training_date
-    ORDER BY training_date
+        d.training_date,
+        STRING_AGG(DISTINCT bp.body_part_name, ', ') AS body_parts,
+        SUM(ROUND(d.weight_kg * d.reps, 1)) AS total_volume,
+        COUNT(DISTINCT d.exercise_name) AS exercise_count
+    FROM deduped d
+    LEFT JOIN mart.d_body_part bp ON d.body_part = bp.body_part_id
+    WHERE d.rn = 1 AND d.is_deleted = FALSE
+    GROUP BY d.training_date
+    ORDER BY d.training_date
 """)
 
 week_dict = {}
