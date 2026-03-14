@@ -43,7 +43,7 @@ else:
 st.markdown("---")
 st.subheader("👤 他ユーザーの記録")
 
-users = query("SELECT user_id, user_name FROM mart.d_user")
+users = query("SELECT user_id, user_name FROM mart.d_user ORDER BY user_id")
 
 col1, col2, col3 = st.columns(3)
 with col1:
