@@ -139,7 +139,11 @@ if suggestion is not None and not suggestion.empty:
         'suggested_reps': '回',
         'suggested_volume': '総量'
     })
-    st.table(display_df)
+    st.table(display_df
+             .reset_index(drop=True)
+             .set_index('Set')
+             .style.format({'kg': '{:.2f}', '総量': '{:.2f}'})
+    )
     total_suggested = suggestion['suggested_volume'].sum()
     st.metric("提案通りの総負荷量", f"{total_suggested:,.1f} kg")
 else:
