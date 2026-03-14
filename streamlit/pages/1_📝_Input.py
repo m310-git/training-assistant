@@ -367,6 +367,50 @@ for i, s in enumerate(st.session_state.sets):
             except Exception as e:
                 st.error(f"保存エラー: {e}")
 
+# 手動保存ボタン
+if st.button("💾 保存", use_container_width=True, type="primary"):
+    for i, s in enumerate(st.session_state.sets):
+        w_val = st.session_state.get(f"w_{key_prefix}_{i}", 0.0)
+        r_val = st.session_state.get(f"r_{key_prefix}_{i}", 1)
+        memo_val = st.session_state.get(f"memo_{key_prefix}_{i}", '')
+
+        if w_val > 0 and r_val > 0 and not s['saved']:
+            valid_w, _ = validate_weight(w_val)
+            valid_r, _ = validate_reps(r_val)
+
+            if valid_w and valid_r:
+                log_id = s.get('log_id', str(uuid.uuid4()))
+                now = datetime.now(timezone.utc).isoformat()
+
+                row = {
+                    'log_id': log_id,
+                    'user_id': user_id,
+                    'exercise_name': selected_ex,
+                    'body_part': selected_bp,
+                    'training_date': str(training_date),
+                    'set_number': i + 1,
+                    'weight_kg': float(w_val),
+                    'reps': int(r_val),
+                    'rpe': None,
+                    'memo': memo_val,
+                    'input_source': 'streamlit',
+                    'created_at': now,
+                    'updated_at': now,
+                    'is_deleted': False
+                }
+
+                try:
+                    insert_rows('training-assistant-prod.raw.training_log', [row])
+                    st.session_state.sets[i]['saved'] = True
+                    st.session_state.sets[i]['log_id'] = log_id
+                    st.session_state.sets[i]['weight'] = float(w_val)
+                    st.session_state.sets[i]['reps'] = int(r_val)
+                    st.session_state.sets[i]['memo'] = memo_val
+                except Exception as e:
+                    st.error(f"保存エラー: {e}")
+
+    st.rerun()
+
 # 総負荷量の表示
 st.markdown("---")
 col_vol1, col_vol2 = st.columns(2)
