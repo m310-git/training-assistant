@@ -180,6 +180,37 @@ def soft_delete_log(log_id):
             }
             insert_rows('training-assistant-prod.raw.training_log', [delete_row])
 
+# --- セット入力 --- の直前に追加するCSS（既存CSSの末尾に追記）
+st.markdown("""
+<style>
+/* ===== セット入力の縦幅を圧縮 ===== */
+/* ウィジェット間の余白を削減 */
+div[data-testid="stNumberInput"],
+div[data-testid="stTextInput"] {
+    margin-top: -0.5rem !important;
+    margin-bottom: -0.5rem !important;
+}
+/* ラベル行の高さを圧縮 */
+div[data-testid="stNumberInput"] label,
+div[data-testid="stTextInput"] label {
+    min-height: 0 !important;
+    height: auto !important;
+    line-height: 1.2 !important;
+    padding: 0 !important;
+}
+/* セット番号のマージン削減 */
+div[data-testid="stMarkdown"] {
+    margin-bottom: -0.3rem !important;
+}
+/* number_input の +/- ボタンを小さく */
+div[data-testid="stNumberInput"] button {
+    padding: 0 4px !important;
+    height: 22px !important;
+    min-height: 0 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # --- セット入力 ---
 st.subheader("✏️ セット入力")
 
@@ -300,10 +331,8 @@ if not existing.empty and st.session_state.get('restored'):
     saved_count = len([s for s in st.session_state.sets if s.get('saved')])
     st.success(f"✅ 本日の記録を復元しました（{saved_count}セット）。セットの追加・編集が可能です。")
 
-# セット入力フォーム
+# ===== セット入力フォーム（コンパクト版）=====
 total_volume = 0.0
-
-# ウィジェットキーのプレフィックス（種目ごとにユニーク）
 key_prefix = f"{selected_bp}_{selected_ex}_{training_date}"
 
 for i, s in enumerate(st.session_state.sets):
@@ -311,29 +340,37 @@ for i, s in enumerate(st.session_state.sets):
     editable = s.get('editable', True)
     status = "✅" if s['saved'] else "⬜"
 
-    st.markdown(f"**{set_num}** {status}")
-
-    col1, col2 = st.columns(2)
+    # セット番号 + kg + 回 を1行に（メモは別セクションへ）
+    c0, col1, col2 = st.columns([1, 4, 4])
+    with c0:
+        st.markdown(f"**{set_num}**{status}")
     with col1:
         w = st.number_input(
             "kg", min_value=0.0, max_value=500.0, step=0.5,
             value=s['weight'] if s['weight'] is not None else 0.0,
-            key=f"w_{key_prefix}_{i}", disabled=not editable
+            key=f"w_{key_prefix}_{i}", disabled=not editable,
+            label_visibility="collapsed"
         )
     with col2:
         r = st.number_input(
-            "回", min_value=1, max_value=100, step=1,
-            value=s['reps'] if s['reps'] is not None else 1,
-            key=f"r_{key_prefix}_{i}", disabled=not editable
+            "回", min_value=0, max_value=100, step=1,
+            value=s['reps'] if s['reps'] is not None else 0,
+            key=f"r_{key_prefix}_{i}", disabled=not editable,
+            label_visibility="collapsed"
         )
-
-    memo = st.text_input(
-        "メモ", value=s.get('memo', ''), key=f"memo_{key_prefix}_{i}",
-        max_chars=200, disabled=not editable
-    )
 
     if w and r:
         total_volume += w * r
+
+# メモは折りたたみ内にまとめる
+with st.expander("📝 メモを入力/確認", expanded=False):
+    for i, s in enumerate(st.session_state.sets):
+        editable = s.get('editable', True)
+        st.text_input(
+            f"Set {i+1}", value=s.get('memo', ''),
+            key=f"memo_{key_prefix}_{i}",
+            max_chars=200, disabled=not editable
+        )
 
 # 保存ボタン
 if st.button("💾 保存", use_container_width=True, type="primary"):
