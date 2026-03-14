@@ -202,11 +202,13 @@ div[data-testid="stTextInput"] label {
 div[data-testid="stMarkdown"] {
     margin-bottom: -0.3rem !important;
 }
-/* number_input の +/- ボタンを小さく */
+/* +/- ボタンを非表示 */
 div[data-testid="stNumberInput"] button {
-    padding: 0 4px !important;
-    height: 22px !important;
-    min-height: 0 !important;
+    display: none !important;
+}
+/* input幅を広げる（ボタン分のスペースを活用） */
+div[data-testid="stNumberInput"] input {
+    width: 100% !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -335,25 +337,33 @@ if not existing.empty and st.session_state.get('restored'):
 total_volume = 0.0
 key_prefix = f"{selected_bp}_{selected_ex}_{training_date}"
 
+# ヘッダー行
+h0, h1, h2 = st.columns([1, 4, 4])
+with h0:
+    st.markdown("**Set**")
+with h1:
+    st.markdown("**kg**")
+with h2:
+    st.markdown("**rep**")
+
 for i, s in enumerate(st.session_state.sets):
     set_num = i + 1
     editable = s.get('editable', True)
-    status = "✅" if s['saved'] else "⬜"
+    status = "✅" if s['saved'] else ""
 
-    # セット番号 + kg + 回 を1行に（メモは別セクションへ）
-    c0, col1, col2 = st.columns([1, 4, 4])
+    c0, c1, c2 = st.columns([2, 4, 4])
     with c0:
-        st.markdown(f"**{set_num}**{status}")
-    with col1:
+        st.markdown(f"**{set_num}** {status}")
+    with c1:
         w = st.number_input(
-            "kg", min_value=0.0, max_value=500.0, step=0.5,
+            f"kg_{set_num}", min_value=0.0, max_value=500.0, step=0.5,
             value=s['weight'] if s['weight'] is not None else 0.0,
             key=f"w_{key_prefix}_{i}", disabled=not editable,
             label_visibility="collapsed"
         )
-    with col2:
+    with c2:
         r = st.number_input(
-            "回", min_value=0, max_value=100, step=1,
+            f"rep_{set_num}", min_value=0, max_value=100, step=1,
             value=s['reps'] if s['reps'] is not None else 0,
             key=f"r_{key_prefix}_{i}", disabled=not editable,
             label_visibility="collapsed"
@@ -362,7 +372,7 @@ for i, s in enumerate(st.session_state.sets):
     if w and r:
         total_volume += w * r
 
-# メモは折りたたみ内にまとめる
+# メモは折りたたみ
 with st.expander("📝 メモを入力/確認", expanded=False):
     for i, s in enumerate(st.session_state.sets):
         editable = s.get('editable', True)
