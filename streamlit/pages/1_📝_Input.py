@@ -113,7 +113,14 @@ except Exception:
 
 if suggestion is not None and not suggestion.empty:
     st.markdown("🤖 **AIモデルによる提案**")
-    st.dataframe(suggestion.reset_index(drop=True), hide_index=True, use_container_width=True)
+    # スマホ対応：カラム名を短縮して表示
+    display_df = suggestion.rename(columns={
+        'set_number': 'Set',
+        'suggested_weight_kg': 'kg',
+        'suggested_reps': '回',
+        'suggested_volume': '総量'
+    })
+    st.dataframe(display_df, hide_index=True, use_container_width=True)
     total_suggested = suggestion['suggested_volume'].sum()
     st.metric("提案通りの総負荷量", f"{total_suggested:,.1f} kg")
 else:
@@ -126,10 +133,10 @@ else:
             sw = round(row['weight_kg'] * 1.025, 1)
             sr = int(row['reps'])
             fallback_data.append({
-                'set_number': int(row['set_number']),
-                'suggested_weight_kg': sw,
-                'suggested_reps': sr,
-                'suggested_volume': round(sw * sr, 1)
+                'Set': int(row['set_number']),
+                'kg': sw,
+                '回': sr,
+                '総量': round(sw * sr, 1)
             })
         fb_df = pd.DataFrame(fallback_data)
         st.dataframe(fb_df, hide_index=True, use_container_width=True)
