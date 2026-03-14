@@ -323,36 +323,27 @@ if not existing.empty and st.session_state.get('restored'):
 total_volume = 0.0
 key_prefix = f"{selected_bp}_{selected_ex}_{training_date}"
 
-# ヘッダー行
-h0, h1, h2 = st.columns([1, 4, 4])
-with h0:
-    st.markdown("**Set**")
-with h1:
-    st.markdown("**kg**")
-with h2:
-    st.markdown("**rep**")
-
 for i, s in enumerate(st.session_state.sets):
     set_num = i + 1
     editable = s.get('editable', True)
     status = "✅" if s['saved'] else ""
 
-    c0, c1, c2 = st.columns([2, 4, 4])
+    c0, c1, c2 = st.columns([1, 4, 4])
     with c0:
-        st.markdown(f"**{set_num}** {status}")
+        st.markdown(f"{set_num}{status}")
     with c1:
         w = st.number_input(
-            f"kg_{set_num}", min_value=0.0, max_value=500.0, step=0.5,
+            "kg", min_value=0.0, max_value=500.0, step=0.5,
             value=s['weight'] if s['weight'] is not None else 0.0,
             key=f"w_{key_prefix}_{i}", disabled=not editable,
-            label_visibility="collapsed"
+            label_visibility="visible" if i == 0 else "collapsed"
         )
     with c2:
         r = st.number_input(
-            f"rep_{set_num}", min_value=0, max_value=100, step=1,
+            "rep", min_value=0, max_value=100, step=1,
             value=s['reps'] if s['reps'] is not None else 0,
             key=f"r_{key_prefix}_{i}", disabled=not editable,
-            label_visibility="collapsed"
+            label_visibility="visible" if i == 0 else "collapsed"
         )
 
     if w and r:
