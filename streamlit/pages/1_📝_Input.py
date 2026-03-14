@@ -226,7 +226,7 @@ if st.session_state.get('sets') is None:
                       if k.startswith(('w_', 'r_', 'memo_', 'rpe_'))]
     for k in keys_to_delete:
         del st.session_state[k]
-        
+
     if not existing.empty:
         st.session_state.sets = []
         for _, row in existing.iterrows():
@@ -296,6 +296,9 @@ if not existing.empty and st.session_state.get('restored'):
 # セット入力フォーム
 total_volume = 0.0
 
+# ウィジェットキーのプレフィックス（種目ごとにユニーク）
+key_prefix = f"{selected_bp}_{selected_ex}_{training_date}"
+
 for i, s in enumerate(st.session_state.sets):
     set_num = i + 1
     editable = s.get('editable', True)
@@ -308,17 +311,17 @@ for i, s in enumerate(st.session_state.sets):
         w = st.number_input(
             "kg", min_value=0.0, max_value=500.0, step=0.5,
             value=s['weight'] if s['weight'] is not None else 0.0,
-            key=f"w_{i}", disabled=not editable
+            key=f"w_{key_prefix}_{i}", disabled=not editable
         )
     with col2:
         r = st.number_input(
             "回", min_value=1, max_value=100, step=1,
             value=s['reps'] if s['reps'] is not None else 1,
-            key=f"r_{i}", disabled=not editable
+            key=f"r_{key_prefix}_{i}", disabled=not editable
         )
 
     memo = st.text_input(
-        "メモ", value=s.get('memo', ''), key=f"memo_{i}",
+        "メモ", value=s.get('memo', ''), key=f"memo_{key_prefix}_{i}",
         max_chars=200, disabled=not editable
     )
 
