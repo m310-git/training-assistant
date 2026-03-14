@@ -183,7 +183,7 @@ if st.session_state.get('restore_key') != restore_key:
     st.session_state.restored = False
     st.session_state.restore_key = restore_key
 
-# 当日の既存記録を取得（Streaming Buffer 対応）
+# 当日の既存記録を取得
 existing = query(f"""
     WITH deduped AS (
         SELECT
@@ -205,6 +205,14 @@ existing = query(f"""
 
 is_today = (training_date == date.today())
 
+# raw のデータ数とセッションが異なる場合はリセット
+current_saved = len([s for s in (st.session_state.get('sets') or []) if s.get('saved')])
+raw_count = len(existing) if not existing.empty else 0
+if st.session_state.get('sets') is not None and current_saved != raw_count and raw_count > 0:
+    st.session_state.sets = None
+    st.session_state.restored = False
+
+# セット状態の初期化・復元
 if st.session_state.get('sets') is None:
     if not existing.empty:
         st.session_state.sets = []
