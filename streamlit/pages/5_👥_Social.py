@@ -86,6 +86,19 @@ detail = query(f"""
         WHERE user_id = '{selected_user}'
           AND training_date = '{selected_date}'
           {bp_filter}
+    ),
+    active AS (
+        SELECT * FROM deduped
+        WHERE rn = 1 AND is_deleted = FALSE
+    ),
+    latest_per_set AS (
+        SELECT
+            *,
+            ROW_NUMBER() OVER (
+                PARTITION BY exercise_name, set_number
+                ORDER BY updated_at DESC
+            ) AS set_rn
+        FROM active
     )
     SELECT
         exercise_name,
@@ -95,8 +108,8 @@ detail = query(f"""
         reps,
         rpe,
         ROUND(weight_kg * reps, 1) AS volume
-    FROM deduped
-    WHERE rn = 1 AND is_deleted = FALSE
+    FROM latest_per_set
+    WHERE set_rn = 1
     ORDER BY exercise_name, set_number
 """)
 

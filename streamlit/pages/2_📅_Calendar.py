@@ -176,8 +176,32 @@ if selected_date in cal_dict:
     st.markdown(f"**総ボリューム:** {info['total_volume']:,.1f} kg")
     st.markdown(f"**種目数:** {info['exercise_count']}")
 
-    # 詳細データ取得（raw から直接）
+    # 詳細データ取得（set_number単位で最新のみ）
     detail = query(f"""
+        WITH deduped AS (
+            SELECT
+                *,
+                ROW_NUMBER() OVER (
+                    PARTITION BY log_id
+                    ORDER BY updated_at DESC
+                ) AS rn
+            FROM raw.training_log
+            WHERE user_id = '{selected_user}'
+              AND training_date = '{selected_date}'
+        ),
+        active AS (
+            SELECT * FROM deduped
+            WHERE rn = 1 AND is_deleted = FALSE
+        ),
+        latest_per_set AS (
+            SELECT
+                *,
+                ROW_NUMBER() OVER (
+                    PARTITION BY exercise_name, set_number
+                    ORDER BY updated_at DESC
+                ) AS set_rn
+            FROM active
+        )
         SELECT
             exercise_name,
             body_part,
@@ -186,10 +210,8 @@ if selected_date in cal_dict:
             reps,
             rpe,
             ROUND(weight_kg * reps, 1) AS volume
-        FROM raw.training_log
-        WHERE user_id = '{selected_user}'
-          AND training_date = '{selected_date}'
-          AND is_deleted = FALSE
+        FROM latest_per_set
+        WHERE set_rn = 1
         ORDER BY exercise_name, set_number
     """)
 
