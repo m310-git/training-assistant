@@ -176,19 +176,19 @@ def soft_delete_log(log_id):
 # --- セット入力 ---
 st.subheader("✏️ セット入力")
 
-# 種目が変わったらセット状態をリセット
-restore_key = f"{training_date}_{selected_ex}"
+# 部位・種目が変わったらセット状態をリセット
+restore_key = f"{training_date}_{selected_bp}_{selected_ex}"
 if st.session_state.get('restore_key') != restore_key:
-    # 古いウィジェット状態もクリア
-    keys_to_delete = [k for k in st.session_state.keys() 
-                      if k.startswith(('w_', 'r_', 'memo_'))]
+    # 全てのウィジェット状態をクリア
+    keys_to_delete = [k for k in list(st.session_state.keys()) 
+                      if k.startswith(('w_', 'r_', 'memo_', 'rpe_'))]
     for k in keys_to_delete:
         del st.session_state[k]
     
     st.session_state.sets = None
     st.session_state.restored = False
+    st.session_state.confirm_delete_all = False
     st.session_state.restore_key = restore_key
-    st.rerun()
 
 # 当日の既存記録を取得
 existing = query(f"""
@@ -221,6 +221,12 @@ if st.session_state.get('sets') is not None and current_saved != raw_count and r
 
 # セット状態の初期化・復元
 if st.session_state.get('sets') is None:
+    # ウィジェット状態を再度クリア（確実に）
+    keys_to_delete = [k for k in list(st.session_state.keys()) 
+                      if k.startswith(('w_', 'r_', 'memo_', 'rpe_'))]
+    for k in keys_to_delete:
+        del st.session_state[k]
+        
     if not existing.empty:
         st.session_state.sets = []
         for _, row in existing.iterrows():
