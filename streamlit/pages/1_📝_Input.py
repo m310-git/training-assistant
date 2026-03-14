@@ -139,7 +139,7 @@ if suggestion is not None and not suggestion.empty:
         'suggested_reps': '回',
         'suggested_volume': '総量'
     })
-    st.dataframe(display_df, hide_index=True, use_container_width=True)
+    st.table(display_df)
     total_suggested = suggestion['suggested_volume'].sum()
     st.metric("提案通りの総負荷量", f"{total_suggested:,.1f} kg")
 else:
@@ -158,7 +158,7 @@ else:
                 '総量': round(sw * sr, 1)
             })
         fb_df = pd.DataFrame(fallback_data)
-        st.dataframe(fb_df, hide_index=True, use_container_width=True)
+        st.table(fb_df)
         st.info("ℹ️ データが蓄積されるとAIモデルによる提案に切り替わります")
     else:
         st.info("提案を表示するには過去の記録が必要です")
@@ -476,10 +476,8 @@ if not history.empty:
         day_data = history[history['training_date'] == d]
         total_vol = day_data['volume'].sum()
         with st.expander(f"■ {d}　総負荷量: {total_vol:,.1f} kg"):
-            st.dataframe(
+            st.table(
                 day_data[['set_number', 'weight_kg', 'reps', 'rpe']].reset_index(drop=True),
-                hide_index=True,
-                use_container_width=True
             )
 else:
     st.info("この種目の記録はまだありません")
