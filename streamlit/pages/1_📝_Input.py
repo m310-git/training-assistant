@@ -427,7 +427,6 @@ if st.button("💾 保存", use_container_width=True, type="primary"):
     st.rerun()
 
 # 総負荷量の表示
-st.markdown("---")
 col_vol1, col_vol2 = st.columns(2)
 with col_vol1:
     st.metric("📊 現在の総負荷量", f"{total_volume:,.1f} kg")
@@ -480,7 +479,6 @@ with col_btn3:
             st.rerun()
 
 # --- 直近3回の実績（一番下に表示）---
-st.markdown("---")
 st.subheader("📋 直近3回の実績")
 
 if not history.empty:
