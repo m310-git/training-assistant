@@ -339,50 +339,66 @@ for i, s in enumerate(st.session_state.sets):
 if st.button("💾 保存", use_container_width=True, type="primary"):
     saved_count = 0
     for i, s in enumerate(st.session_state.sets):
-        w_val = st.session_state.get(f"w_{key_prefix}_{i}", 0.0)
-        r_val = st.session_state.get(f"r_{key_prefix}_{i}", 1)
-        memo_val = st.session_state.get(f"memo_{key_prefix}_{i}", '')
+        w_key = f"w_{key_prefix}_{i}"
+        r_key = f"r_{key_prefix}_{i}"
+        memo_key = f"memo_{key_prefix}_{i}"
 
-        if w_val > 0 and r_val > 0 and not s['saved']:
-            valid_w, _ = validate_weight(w_val)
-            valid_r, _ = validate_reps(r_val)
+        w_val = st.session_state.get(w_key)
+        r_val = st.session_state.get(r_key)
+        memo_val = st.session_state.get(memo_key, '')
 
-            if valid_w and valid_r:
-                log_id = s.get('log_id', str(uuid.uuid4()))
-                now = datetime.now(timezone.utc).isoformat()
+        if w_val is None or r_val is None or w_val <= 0 or r_val <= 0:
+            continue
 
-                row = {
-                    'log_id': log_id,
-                    'user_id': user_id,
-                    'exercise_name': selected_ex,
-                    'body_part': selected_bp,
-                    'training_date': str(training_date),
-                    'set_number': i + 1,
-                    'weight_kg': float(w_val),
-                    'reps': int(r_val),
-                    'rpe': None,
-                    'memo': memo_val,
-                    'input_source': 'streamlit',
-                    'created_at': now,
-                    'updated_at': now,
-                    'is_deleted': False
-                }
+        # 新規 or 値が変わった場合に保存
+        is_new = not s['saved']
+        is_changed = s['saved'] and (
+            s.get('weight') != float(w_val) or
+            s.get('reps') != int(r_val) or
+            s.get('memo', '') != (memo_val or '')
+        )
 
-                try:
-                    insert_rows('training-assistant-prod.raw.training_log', [row])
-                    st.session_state.sets[i]['saved'] = True
-                    st.session_state.sets[i]['log_id'] = log_id
-                    st.session_state.sets[i]['weight'] = float(w_val)
-                    st.session_state.sets[i]['reps'] = int(r_val)
-                    st.session_state.sets[i]['memo'] = memo_val
-                    saved_count += 1
-                except Exception as e:
-                    st.error(f"保存エラー: {e}")
+        if is_new or is_changed:
+            log_id = s.get('log_id', str(uuid.uuid4()))
+            now = datetime.now(timezone.utc).isoformat()
+
+            # 変更の場合は古いレコードを論理削除して新規INSERT
+            if is_changed and s.get('log_id'):
+                soft_delete_log(s['log_id'])
+                log_id = str(uuid.uuid4())
+
+            row = {
+                'log_id': log_id,
+                'user_id': user_id,
+                'exercise_name': selected_ex,
+                'body_part': selected_bp,
+                'training_date': str(training_date),
+                'set_number': i + 1,
+                'weight_kg': float(w_val),
+                'reps': int(r_val),
+                'rpe': None,
+                'memo': memo_val if memo_val else '',
+                'input_source': 'streamlit',
+                'created_at': now,
+                'updated_at': now,
+                'is_deleted': False
+            }
+
+            try:
+                insert_rows('training-assistant-prod.raw.training_log', [row])
+                st.session_state.sets[i]['saved'] = True
+                st.session_state.sets[i]['log_id'] = log_id
+                st.session_state.sets[i]['weight'] = float(w_val)
+                st.session_state.sets[i]['reps'] = int(r_val)
+                st.session_state.sets[i]['memo'] = memo_val or ''
+                saved_count += 1
+            except Exception as e:
+                st.error(f"保存エラー: {e}")
 
     if saved_count > 0:
         st.success(f"✅ {saved_count}セット保存しました")
     else:
-        st.info("保存するデータがありません")
+        st.info("変更はありません")
     st.rerun()
 
 # 総負荷量の表示
