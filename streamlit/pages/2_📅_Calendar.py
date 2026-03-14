@@ -67,14 +67,15 @@ cal_data = query(f"""
     ),
     daily_data AS (
         SELECT
-            training_date,
-            body_part,
-            exercise_name,
-            weight_kg,
-            reps,
-            ROUND(weight_kg * reps, 1) AS volume
-        FROM deduped
-        WHERE rn = 1 AND is_deleted = FALSE
+            d.training_date,
+            bp.body_part_name,
+            d.exercise_name,
+            d.weight_kg,
+            d.reps,
+            ROUND(d.weight_kg * d.reps, 1) AS volume
+        FROM deduped d
+        LEFT JOIN mart.d_body_part bp ON d.body_part = bp.body_part_id
+        WHERE d.rn = 1 AND d.is_deleted = FALSE
     ),
     exercise_max AS (
         SELECT
@@ -96,7 +97,7 @@ cal_data = query(f"""
     )
     SELECT
         d.training_date,
-        STRING_AGG(DISTINCT d.body_part, ', ') AS body_parts,
+        STRING_AGG(DISTINCT d.body_part_name, ', ') AS body_parts,
         SUM(d.volume) AS total_volume,
         COUNT(DISTINCT d.exercise_name) AS exercise_count,
         es.exercise_summary

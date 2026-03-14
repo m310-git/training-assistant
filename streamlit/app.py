@@ -16,7 +16,7 @@ if not check_password():
 user_id = st.session_state.user_id
 user_name = st.session_state.user_name
 
-st.title(f"🏋️ {user_name}さんのトレーニング")
+st.subheader(f"🏋️ {user_name}さんのトレーニング")
 
 # ============================================
 # 1. 今週のトレーニング
