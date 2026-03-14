@@ -49,6 +49,25 @@ div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
 div[data-testid="stSelectbox"] > div {
     font-size: 13px !important;
 }
+/* ===== セット入力の圧縮 ===== */
+/* +/- ボタンを非表示 */
+div[data-testid="stNumberInput"] [data-testid="stNumberInputStepUp"],
+div[data-testid="stNumberInput"] [data-testid="stNumberInputStepDown"] {
+    display: none !important;
+}
+/* ボタン非表示後にinput枠を幅いっぱいに広げる */
+div[data-testid="stNumberInput"] > div > div > div {
+    width: 100% !important;
+}
+div[data-testid="stNumberInput"] input {
+    width: 100% !important;
+    text-align: left !important;
+}
+/* ウィジェット間の縦余白を削減 */
+div[data-testid="stNumberInput"] {
+    margin-top: -0.4rem !important;
+    margin-bottom: -0.4rem !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -179,39 +198,6 @@ def soft_delete_log(log_id):
                 'is_deleted': True
             }
             insert_rows('training-assistant-prod.raw.training_log', [delete_row])
-
-# --- セット入力 --- の直前に追加するCSS（既存CSSの末尾に追記）
-st.markdown("""
-<style>
-/* ===== セット入力の縦幅を圧縮 ===== */
-/* ウィジェット間の余白を削減 */
-div[data-testid="stNumberInput"],
-div[data-testid="stTextInput"] {
-    margin-top: -0.5rem !important;
-    margin-bottom: -0.5rem !important;
-}
-/* ラベル行の高さを圧縮 */
-div[data-testid="stNumberInput"] label,
-div[data-testid="stTextInput"] label {
-    min-height: 0 !important;
-    height: auto !important;
-    line-height: 1.2 !important;
-    padding: 0 !important;
-}
-/* セット番号のマージン削減 */
-div[data-testid="stMarkdown"] {
-    margin-bottom: -0.3rem !important;
-}
-/* +/- ボタンを非表示 */
-div[data-testid="stNumberInput"] button {
-    display: none !important;
-}
-/* input幅を広げる（ボタン分のスペースを活用） */
-div[data-testid="stNumberInput"] input {
-    width: 100% !important;
-}
-</style>
-""", unsafe_allow_html=True)
 
 # --- セット入力 ---
 st.subheader("✏️ セット入力")
