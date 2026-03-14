@@ -1,18 +1,17 @@
 import streamlit as st
-import uuid
 from datetime import datetime
-from utils.auth import check_password
+from utils.auth import is_logged_in, require_login_for_action
 from utils.bigquery_client import query, insert_rows
 
-if not check_password():
-    st.stop()
-
-# 管理者チェック
-if not st.session_state.get('is_admin', False):
-    st.error("⛔ この画面は管理者のみアクセスできます")
-    st.stop()
 
 st.subheader("⚙️ 管理者画面")
+
+# 管理者チェック（ログイン済みの場合のみ）
+if is_logged_in() and not st.session_state.get('is_admin', False):
+    st.error("⛔ この画面は管理者のみ操作できます")
+
+if not is_logged_in():
+    st.info("💡 操作にはログインが必要です（管理者のみ）")
 
 # --- 承認待ちリクエスト ---
 st.subheader("📬 承認待ちリクエスト")
@@ -148,6 +147,7 @@ if not exercises.empty:
         format_func=lambda x: exercises[exercises['exercise_id']==x]['exercise_name'].values[0]
     )
     if st.button("🚫 無効化"):
+        require_login_for_action()
         query(f"""
             UPDATE raw.exercise_master
             SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP()
@@ -172,6 +172,7 @@ new_compound = st.checkbox("複合種目（KPI対象）")
 new_order = st.number_input("表示順", min_value=1, max_value=100, value=10)
 
 if st.button("💾 追加"):
+    require_login_for_action()
     if not new_id or not new_name:
         st.error("種目IDと種目名は必須です")
     elif not new_id.replace('_', '').isalnum():

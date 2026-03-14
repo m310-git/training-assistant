@@ -1,7 +1,6 @@
 import streamlit as st
 from datetime import date, timedelta
-import calendar
-from utils.auth import check_password
+from utils.auth import check_password, is_logged_in
 from utils.bigquery_client import query
 
 st.set_page_config(
@@ -10,11 +9,20 @@ st.set_page_config(
     layout="wide"
 )
 
-if not check_password():
-    st.stop()
-
-user_id = st.session_state.user_id
-user_name = st.session_state.user_name
+if is_logged_in():
+    user_id = st.session_state.user_id
+    user_name = st.session_state.user_name
+    st.title(f"🏋️ {user_name}さん、こんにちは！")
+else:
+    st.title("🏋️ 閲覧者さん、こんにちは！")
+    st.info("💡 ログインするとデータ入力ができます")
+    users = query("SELECT user_id, user_name FROM mart.d_user ORDER BY user_id")
+    user_id = st.selectbox(
+        "表示するユーザー",
+        options=users['user_id'].tolist(),
+        format_func=lambda x: users[users['user_id']==x]['user_name'].values[0]
+    )
+    user_name = users[users['user_id']==user_id]['user_name'].values[0]
 
 st.subheader(f"🏋️ {user_name}さんのトレーニング")
 
@@ -207,6 +215,15 @@ with col4:
 # フッター
 # ============================================
 st.markdown("---")
-if st.button("🚪 ログアウト", use_container_width=True):
-    st.session_state.clear()
-    st.rerun()
+if is_logged_in():
+    if st.button("🚪 ログアウト", use_container_width=True):
+        st.session_state.clear()
+        st.rerun()
+else:
+    if st.button("🔐 ログイン", use_container_width=True):
+        st.session_state.show_login = True
+        st.rerun()
+
+# ログインフォーム表示
+if not is_logged_in() and st.session_state.get('show_login'):
+    check_password()

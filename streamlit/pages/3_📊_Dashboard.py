@@ -1,20 +1,23 @@
 import streamlit as st
 import plotly.express as px
-from utils.auth import check_password
+from utils.auth import is_logged_in
 from utils.bigquery_client import query
-
-if not check_password():
-    st.stop()
 
 st.subheader("📊 ダッシュボード")
 
 # ユーザー切り替え
-users = query("SELECT user_id, user_name FROM mart.d_user")
+users = query("SELECT user_id, user_name FROM mart.d_user ORDER BY user_id")
+
+if is_logged_in():
+    default_index = users['user_id'].tolist().index(st.session_state.user_id)
+else:
+    default_index = 0
+
 selected_user = st.selectbox(
     "ユーザー",
     options=users['user_id'].tolist(),
     format_func=lambda x: users[users['user_id']==x]['user_name'].values[0],
-    index=users['user_id'].tolist().index(st.session_state.user_id)
+    index=default_index
 )
 
 # --- KPIカード（複合種目のみ）---

@@ -1,10 +1,6 @@
 import streamlit as st
-from datetime import datetime, timedelta
-from utils.auth import check_password
+from datetime import datetime
 from utils.bigquery_client import query
-
-if not check_password():
-    st.stop()
 
 st.subheader("👥 ソーシャル")
 

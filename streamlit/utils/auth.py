@@ -4,8 +4,13 @@ import hashlib
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
+def is_logged_in():
+    """ログイン済みかどうかを返す"""
+    return st.session_state.get("authenticated", False)
+
 def check_password():
-    if "authenticated" in st.session_state and st.session_state.authenticated:
+    """ログインフォーム表示（従来通り）"""
+    if is_logged_in():
         return True
 
     st.title("🔐 ログイン")
@@ -27,3 +32,17 @@ def check_password():
             st.error("ユーザーIDが見つかりません")
 
     return False
+
+def require_login_for_action():
+    """データ変更時にログインを要求。未ログインならログイン画面へ遷移"""
+    if not is_logged_in():
+        st.session_state.login_redirect = True
+        st.warning("⚠️ この操作にはログインが必要です")
+        st.switch_page("app.py")
+        st.stop()
+
+def get_user_id_or_default():
+    """ログイン済みならuser_id、未ログインならデフォルト"""
+    if is_logged_in():
+        return st.session_state.user_id
+    return 'user_001'

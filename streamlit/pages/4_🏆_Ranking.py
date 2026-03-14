@@ -1,9 +1,5 @@
 import streamlit as st
-from utils.auth import check_password
 from utils.bigquery_client import query
-
-if not check_password():
-    st.stop()
 
 st.subheader("🏆 ランキング")
 

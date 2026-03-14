@@ -1,15 +1,15 @@
 import streamlit as st
 import uuid
 from datetime import datetime
-from utils.auth import check_password
+from utils.auth import is_logged_in, require_login_for_action, get_user_id_or_default
 from utils.bigquery_client import query, insert_rows
-
-if not check_password():
-    st.stop()
 
 st.subheader("➕ 種目追加リクエスト")
 
-user_id = st.session_state.user_id
+user_id = get_user_id_or_default()
+
+if not is_logged_in():
+    st.info("💡 リクエスト送信にはログインが必要です")
 
 # --- 新規リクエスト ---
 st.subheader("新規リクエスト")
@@ -25,6 +25,7 @@ selected_bp = st.selectbox(
 reason = st.text_area("追加理由（任意）", max_chars=500)
 
 if st.button("📤 リクエスト送信"):
+    require_login_for_action()
     if not exercise_name or len(exercise_name) < 2:
         st.error("種目名を2文字以上で入力してください")
     else:

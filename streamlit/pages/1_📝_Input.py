@@ -2,14 +2,15 @@ import streamlit as st
 import uuid
 import pandas as pd
 from datetime import datetime, timedelta, timezone, date
-from utils.auth import check_password
+from utils.auth import is_logged_in, require_login_for_action, get_user_id_or_default
 from utils.bigquery_client import query, insert_rows
-from utils.validators import validate_weight, validate_reps, validate_rpe
-
-if not check_password():
-    st.stop()
 
 st.subheader("📝 トレーニング入力")
+
+user_id = get_user_id_or_default()
+
+if not is_logged_in():
+    st.info("💡 データの保存にはログインが必要です")
 
 # スマホ対応CSS（ページ全体に適用）
 st.markdown("""
@@ -71,7 +72,17 @@ div[data-testid="stNumberInput"] {
 </style>
 """, unsafe_allow_html=True)
 
-user_id = st.session_state.user_id
+if is_logged_in():
+    user_id = st.session_state.user_id
+    user_name = st.session_state.user_name
+else:
+    users = query("SELECT user_id, user_name FROM mart.d_user ORDER BY user_id")
+    user_id = st.selectbox(
+        "表示するユーザー",
+        options=users['user_id'].tolist(),
+        format_func=lambda x: users[users['user_id']==x]['user_name'].values[0]
+    )
+    user_name = users[users['user_id']==user_id]['user_name'].values[0]
 
 # --- 日付・部位・種目の選択 ---
 training_date = st.date_input("日付", value=datetime.now())
@@ -362,6 +373,9 @@ for i, s in enumerate(st.session_state.sets):
 
 # 保存ボタン
 if st.button("💾 保存", use_container_width=True, type="primary"):
+    # ★ ここでログインチェック
+    require_login_for_action()
+
     saved_count = 0
     for i, s in enumerate(st.session_state.sets):
         w_key = f"w_{key_prefix}_{i}"
@@ -442,6 +456,7 @@ with col_vol2:
 col_btn1, col_btn2, col_btn3 = st.columns(3)
 with col_btn1:
     if st.button("＋ 追加", use_container_width=True):
+        require_login_for_action()
         if len(st.session_state.sets) < 20:
             st.session_state.sets.append({
                 'weight': None, 'reps': None, 'rpe': None,
@@ -453,6 +468,7 @@ with col_btn1:
 
 with col_btn2:
     if st.button("🗑 末尾削除", use_container_width=True):
+        require_login_for_action()
         if len(st.session_state.sets) > 1:
             last = st.session_state.sets[-1]
             if last.get('log_id'):
@@ -464,6 +480,7 @@ with col_btn3:
     saved_sets = [s for s in st.session_state.sets if s.get('log_id')]
     if saved_sets:
         if st.button("🗑 全削除", use_container_width=True, type="secondary"):
+            require_login_for_action()
             # 確認なしで即実行（ボタン2回押し問題を回避）
             for s in st.session_state.sets:
                 if s.get('log_id'):

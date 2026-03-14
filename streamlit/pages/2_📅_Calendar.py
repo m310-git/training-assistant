@@ -1,21 +1,24 @@
 import streamlit as st
 from datetime import datetime, date, timedelta
 import calendar
-from utils.auth import check_password
+from utils.auth import is_logged_in
 from utils.bigquery_client import query
-
-if not check_password():
-    st.stop()
 
 st.subheader("📅 カレンダー")
 
 # ユーザー切り替え
-users = query("SELECT user_id, user_name FROM mart.d_user")
+users = query("SELECT user_id, user_name FROM mart.d_user ORDER BY user_id")
+
+if is_logged_in():
+    default_index = users['user_id'].tolist().index(st.session_state.user_id)
+else:
+    default_index = 0
+
 selected_user = st.selectbox(
     "ユーザー",
     options=users['user_id'].tolist(),
     format_func=lambda x: users[users['user_id']==x]['user_name'].values[0],
-    index=users['user_id'].tolist().index(st.session_state.user_id)
+    index=default_index
 )
 
 # 月切り替え
@@ -228,39 +231,40 @@ if selected_date in cal_dict:
             )
 
     # 編集ボタン
-    if selected_user == st.session_state.user_id:
-        is_today = (selected_date == date.today())
-        if is_today:
-            if st.button("✏️ 編集する", use_container_width=True):
-                # セッション状態をクリアして Input で再取得させる
-                if 'sets' in st.session_state:
-                    del st.session_state['sets']
-                if 'restore_key' in st.session_state:
-                    del st.session_state['restore_key']
-                if 'restored' in st.session_state:
-                    del st.session_state['restored']
-                st.session_state.edit_date = selected_date
-                st.switch_page("pages/1_📝_Input.py")
-        else:
-            created_check = query(f"""
-                SELECT MIN(created_at) AS earliest
-                FROM raw.training_log
-                WHERE user_id = '{selected_user}'
-                  AND training_date = '{selected_date}'
-                  AND is_deleted = FALSE
-            """)
-            if not created_check.empty and created_check['earliest'].values[0]:
-                import pandas as pd
-                earliest = pd.Timestamp(created_check['earliest'].values[0])
-                if earliest.tzinfo is None:
-                    earliest = earliest.tz_localize('UTC')
-                if datetime.now(earliest.tzinfo) < earliest + timedelta(hours=3):
-                    if st.button("✏️ 編集する", use_container_width=True):
-                        if 'sets' in st.session_state:
-                            del st.session_state['sets']
-                        if 'restore_key' in st.session_state:
-                            del st.session_state['restore_key']
-                        if 'restored' in st.session_state:
-                            del st.session_state['restored']
-                        st.session_state.edit_date = selected_date
-                        st.switch_page("pages/1_📝_Input.py")
+    if is_logged_in() and selected_user == st.session_state.user_id:
+        if selected_user == st.session_state.user_id:
+            is_today = (selected_date == date.today())
+            if is_today:
+                if st.button("✏️ 編集する", use_container_width=True):
+                    # セッション状態をクリアして Input で再取得させる
+                    if 'sets' in st.session_state:
+                        del st.session_state['sets']
+                    if 'restore_key' in st.session_state:
+                        del st.session_state['restore_key']
+                    if 'restored' in st.session_state:
+                        del st.session_state['restored']
+                    st.session_state.edit_date = selected_date
+                    st.switch_page("pages/1_📝_Input.py")
+            else:
+                created_check = query(f"""
+                    SELECT MIN(created_at) AS earliest
+                    FROM raw.training_log
+                    WHERE user_id = '{selected_user}'
+                    AND training_date = '{selected_date}'
+                    AND is_deleted = FALSE
+                """)
+                if not created_check.empty and created_check['earliest'].values[0]:
+                    import pandas as pd
+                    earliest = pd.Timestamp(created_check['earliest'].values[0])
+                    if earliest.tzinfo is None:
+                        earliest = earliest.tz_localize('UTC')
+                    if datetime.now(earliest.tzinfo) < earliest + timedelta(hours=3):
+                        if st.button("✏️ 編集する", use_container_width=True):
+                            if 'sets' in st.session_state:
+                                del st.session_state['sets']
+                            if 'restore_key' in st.session_state:
+                                del st.session_state['restore_key']
+                            if 'restored' in st.session_state:
+                                del st.session_state['restored']
+                            st.session_state.edit_date = selected_date
+                            st.switch_page("pages/1_📝_Input.py")
