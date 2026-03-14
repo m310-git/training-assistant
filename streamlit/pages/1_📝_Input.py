@@ -335,40 +335,9 @@ for i, s in enumerate(st.session_state.sets):
     if w and r:
         total_volume += w * r
 
-    if w and r and w > 0 and r > 0 and not s['saved'] and editable:
-        valid_w, _ = validate_weight(w)
-        valid_r, _ = validate_reps(r)
-
-        if valid_w and valid_r:
-            log_id = s.get('log_id', str(uuid.uuid4()))
-            now = datetime.now(timezone.utc).isoformat()
-
-            row = {
-                'log_id': log_id,
-                'user_id': user_id,
-                'exercise_name': selected_ex,
-                'body_part': selected_bp,
-                'training_date': str(training_date),
-                'set_number': set_num,
-                'weight_kg': float(w),
-                'reps': int(r),
-                'rpe': None,
-                'memo': memo,
-                'input_source': 'streamlit',
-                'created_at': now,
-                'updated_at': now,
-                'is_deleted': False
-            }
-
-            try:
-                insert_rows('training-assistant-prod.raw.training_log', [row])
-                st.session_state.sets[i]['saved'] = True
-                st.session_state.sets[i]['log_id'] = log_id
-            except Exception as e:
-                st.error(f"保存エラー: {e}")
-
-# 手動保存ボタン
+# 保存ボタン
 if st.button("💾 保存", use_container_width=True, type="primary"):
+    saved_count = 0
     for i, s in enumerate(st.session_state.sets):
         w_val = st.session_state.get(f"w_{key_prefix}_{i}", 0.0)
         r_val = st.session_state.get(f"r_{key_prefix}_{i}", 1)
@@ -406,9 +375,14 @@ if st.button("💾 保存", use_container_width=True, type="primary"):
                     st.session_state.sets[i]['weight'] = float(w_val)
                     st.session_state.sets[i]['reps'] = int(r_val)
                     st.session_state.sets[i]['memo'] = memo_val
+                    saved_count += 1
                 except Exception as e:
                     st.error(f"保存エラー: {e}")
 
+    if saved_count > 0:
+        st.success(f"✅ {saved_count}セット保存しました")
+    else:
+        st.info("保存するデータがありません")
     st.rerun()
 
 # 総負荷量の表示
