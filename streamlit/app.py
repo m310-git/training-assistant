@@ -12,7 +12,7 @@ st.set_page_config(
 if is_logged_in():
     user_id = st.session_state.user_id
     user_name = st.session_state.user_name
-    st.title(f"🏋️ {user_name}さん、こんにちは！")
+    st.subheader(f"🏋️ {user_name}さん、こんにちは！")
 else:
     st.title("🏋️ 閲覧者さん、こんにちは！")
     st.info("💡 ログインするとデータ入力ができます")
@@ -23,8 +23,6 @@ else:
         format_func=lambda x: users[users['user_id']==x]['user_name'].values[0]
     )
     user_name = users[users['user_id']==user_id]['user_name'].values[0]
-
-st.subheader(f"🏋️ {user_name}さんのトレーニング")
 
 # ============================================
 # 1. 今週のトレーニング
