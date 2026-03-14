@@ -477,7 +477,7 @@ if not history.empty:
         total_vol = day_data['volume'].sum()
         with st.expander(f"■ {d}　総負荷量: {total_vol:,.1f} kg"):
             st.table(
-                day_data[['set_number', 'weight_kg', 'reps', 'rpe']].reset_index(drop=True),
+                day_data[['set', 'kg', 'reps']].reset_index(drop=True),
             )
 else:
     st.info("この種目の記録はまだありません")
