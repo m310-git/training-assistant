@@ -1,0 +1,16 @@
+version: 2
+
+models:
+  - name: stg_training_log
+    description: "クレンジング済みトレーニングログ"
+    columns:
+      - name: log_id
+        tests: [unique, not_null]
+      - name: user_id
+        tests: [not_null]
+      - name: weight_kg
+        tests: [not_null]
+      - name: reps
+        tests: [not_null]
+      - name: volume
+        tests: [not_null]

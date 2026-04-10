@@ -7,7 +7,7 @@ from google.cloud import bigquery
 bq_client = bigquery.Client()
 
 def run_dbt(command, select=None):
-    cmd = ["dbt", command, "--project-dir", "/workspace/dbt"]
+    cmd = ["dbt", command, "--project-dir", "/workspace/dbt", "--profiles-dir", "/workspace/dbt"]
     if select:
         cmd.extend(["--select", select])
     result = subprocess.run(cmd, capture_output=True, text=True)
