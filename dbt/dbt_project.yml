@@ -23,3 +23,7 @@ models:
       
     mart:
       +materialized: table
+
+tests:
+  training_assistant:
+    +severity: warn

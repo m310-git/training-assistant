@@ -32,8 +32,31 @@ models:
         tests: [unique, not_null]
       - name: user_id
         tests: [not_null]
-      - name: volume
+      - name: training_date
         tests: [not_null]
+      - name: weight_kg
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 500
+      - name: reps
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 1
+              max_value: 100
+      - name: rpe
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 6.0
+              max_value: 10.0
+      - name: volume
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0
+              max_value: 50000
 
   - name: m_ml_suggestion
     description: "BigQuery ML予測結果。次回の推奨重量・回数。"
