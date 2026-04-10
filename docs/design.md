@@ -2136,8 +2136,12 @@ hotfix/*  → 緊急修正。mainから分岐→mainへマージ→developにも
 
 実行方式:
   dbt test で dbt-expectations テストを実行
-  Elementary でテスト結果の可視化・監視
+  Elementary でテスト結果の可視化・監視（後日対応）
   テスト失敗時はログに記録（パイプラインは停止しない）
+
+注記:
+  Elementaryダッシュボードの設定（Slack/Teams通知設定）は複雑なため、
+  Phase 2ではパッケージ導入のみ実施。ダッシュボードの有効化は後日対応。
 
 ```
 
