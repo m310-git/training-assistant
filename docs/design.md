@@ -2122,20 +2122,21 @@ hotfix/*  → 緊急修正。mainから分岐→mainへマージ→developにも
 
 # **14. 将来の拡張計画**
 
-### **14.1. Phase 2: データ品質（Great Expectations）**
+### **14.1. Phase 2: データ品質（dbt-expectations + Elementary）**
 
 ```
 導入目的:
-  dbt tests では対応しきれない高度なデータ品質テストを実施
+  dbt tests では対応しきれない高度なデータ品質テストを実施・可視化
 
 追加テスト例:
+  - fct_training_set: 重量・回数・RPE・ボリュームの範囲チェック
   - m_progress_curve: ボリュームが現実的な範囲内か（0〜100,000）
   - m_ranking_*: ランキングに全ユーザーが含まれているか
   - fct_training_set: 1日あたりのセット数が異常でないか（100セット以上は異常）
-  - raw.training_log: データ鮮度（24時間以内にデータが入っているか）
 
 実行方式:
-  dbt test の後に Great Expectations を実行
+  dbt test で dbt-expectations テストを実行
+  Elementary でテスト結果の可視化・監視
   テスト失敗時はログに記録（パイプラインは停止しない）
 
 ```
