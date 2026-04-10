@@ -36,7 +36,7 @@ dbt/logs/
 dbt/.user.yml
 
 # ワークログ（ポートフォリオ用に除外）
-docs/work_logs/
+# docs/work_logs/
 
 # ========== IDE ==========
 .vscode/
