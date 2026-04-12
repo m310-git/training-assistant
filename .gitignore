@@ -4,6 +4,7 @@ secrets/
 *.json
 !dbt/dbt_project.yml
 !dbt/packages.yml
+!repomix.config.json
 
 # Streamlit シークレット
 streamlit/.streamlit/secrets.toml
@@ -38,6 +39,9 @@ dbt/package-lock.yml
 
 # Elementary
 edr_target/
+
+# Repomix
+repomix-output.*
 
 # ワークログ（ポートフォリオ用に除外）
 # docs/work_logs/
