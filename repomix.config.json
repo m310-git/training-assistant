@@ -9,6 +9,8 @@
     "dbt/models/**/*.sql",
     "dbt/macros/**/*.sql",
     "prefect_flows/**/*.py",
+    "scripts/**/*",
+    ".github/workflows/**/*",
     "dbt/dbt_project.yml",
     "dbt/packages.yml",
     "requirements.txt",
