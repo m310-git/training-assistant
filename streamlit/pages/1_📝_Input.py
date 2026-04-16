@@ -3,11 +3,17 @@ import uuid
 import pandas as pd
 from datetime import datetime, timedelta, timezone, date
 from utils.auth import is_logged_in, require_login_for_action
-from utils.bigquery_client import query, insert_rows
+from utils.bigquery_client import query
+from utils.firestore_client import (
+    get_training_log,
+    save_training_log,
+    soft_delete_set,
+    soft_delete_training_log,
+)
 
 st.subheader("📝 トレーニング入力")
 
-# user_id の取得部分を以下に変更
+# user_id の取得部分
 if is_logged_in():
     user_id = st.session_state.user_id
 else:
@@ -106,6 +112,7 @@ with exercises_col1:
         format_func=lambda x: body_parts[body_parts['body_part_id']==x]['body_part_name'].values[0]
     )
 
+# 種目一覧を取得（exercise_id ベース）
 exercises = query(f"""
     SELECT exercise_id, exercise_name
     FROM mart.d_exercise
@@ -114,17 +121,24 @@ exercises = query(f"""
 """)
 
 with exercises_col2:
-    selected_ex = st.selectbox(
+    # 内部値は exercise_id、表示は exercise_name
+    selected_ex_id = st.selectbox(
         "種目",
-        options=exercises['exercise_name'].tolist()
+        options=exercises['exercise_id'].tolist(),
+        format_func=lambda x: exercises[exercises['exercise_id']==x]['exercise_name'].values[0]
     )
+
+# 選択中の exercise_name を取得（表示・BigQuery参照用）
+selected_ex_name = exercises[exercises['exercise_id']==selected_ex_id]['exercise_name'].values[0]
+# 選択中の body_part_name を取得（Firestore保存用）
+selected_bp_name = body_parts[body_parts['body_part_id']==selected_bp]['body_part_name'].values[0]
 
 # --- データ取得（表示は後で使う）---
 history = query(f"""
     SELECT training_date, set_number, weight_kg, reps, rpe, volume, IFNULL(memo, '') AS memo
     FROM mart.fct_training_set
     WHERE user_id = '{user_id}'
-      AND exercise_name = '{selected_ex}'
+      AND exercise_id = '{selected_ex_id}'
       AND training_date < '{training_date}'
     ORDER BY training_date DESC, set_number
     LIMIT 30
@@ -139,7 +153,7 @@ try:
         SELECT set_number, suggested_weight_kg, suggested_reps, suggested_volume
         FROM mart.m_ml_suggestion
         WHERE user_id = '{user_id}'
-          AND exercise_name = '{selected_ex}'
+          AND exercise_id = '{selected_ex_id}'
         ORDER BY set_number
     """)
 except Exception:
@@ -182,47 +196,18 @@ else:
     else:
         st.info("提案を表示するには過去の記録が必要です")
 
-# --- 論理削除ヘルパー ---
-def soft_delete_log(log_id):
-    try:
-        query(f"""
-            UPDATE raw.training_log
-            SET is_deleted = TRUE, updated_at = CURRENT_TIMESTAMP()
-            WHERE log_id = '{log_id}'
-        """)
-    except Exception:
-        original = query(f"""
-            SELECT * FROM raw.training_log
-            WHERE log_id = '{log_id}'
-            ORDER BY updated_at DESC
-            LIMIT 1
-        """)
-        if not original.empty:
-            row = original.iloc[0]
-            now = datetime.now(timezone.utc).isoformat()
-            delete_row = {
-                'log_id': row['log_id'],
-                'user_id': row['user_id'],
-                'exercise_name': row['exercise_name'],
-                'body_part': row['body_part'],
-                'training_date': str(row['training_date']),
-                'set_number': int(row['set_number']),
-                'weight_kg': float(row['weight_kg']),
-                'reps': int(row['reps']),
-                'rpe': float(row['rpe']) if row['rpe'] else None,
-                'memo': row['memo'] or '',
-                'input_source': 'streamlit',
-                'created_at': row['created_at'].isoformat() if hasattr(row['created_at'], 'isoformat') else str(row['created_at']),
-                'updated_at': now,
-                'is_deleted': True
-            }
-            insert_rows('training-assistant-prod.raw.training_log', [delete_row])
-
 # --- セット入力 ---
 st.subheader("✏️ セット入力")
 
-# 部位・種目が変わったらセット状態をリセット
-restore_key = f"{training_date}_{selected_bp}_{selected_ex}"
+# 注記: Firestore/BigQuery同期について
+st.info("""
+ℹ️ **データ保存について**
+- 保存データは Firestore に即時反映されます
+- 履歴・提案・直近実績などの分析系表示は BigQuery 同期後に更新されます
+""")
+
+# 部位・種目が変わったらセット状態をリセット（exercise_id ベース）
+restore_key = f"{training_date}_{selected_bp}_{selected_ex_id}"
 if st.session_state.get('restore_key') != restore_key:
     # 全てのウィジェット状態をクリア
     keys_to_delete = [k for k in list(st.session_state.keys()) 
@@ -235,36 +220,22 @@ if st.session_state.get('restore_key') != restore_key:
     st.session_state.confirm_delete_all = False
     st.session_state.restore_key = restore_key
 
-# 当日の既存記録を取得
-existing = query(f"""
-    WITH deduped AS (
-        SELECT
-            *,
-            ROW_NUMBER() OVER (
-                PARTITION BY log_id
-                ORDER BY updated_at DESC
-            ) AS rn
-        FROM raw.training_log
-        WHERE user_id = '{user_id}'
-          AND exercise_name = '{selected_ex}'
-          AND training_date = '{training_date}'
-    )
-    SELECT log_id, set_number, weight_kg, reps, rpe, memo, created_at
-    FROM deduped
-    WHERE rn = 1 AND is_deleted = FALSE
-    ORDER BY set_number
-""")
+# Firestore から当日の既存記録を取得
+existing_doc = get_training_log(user_id, str(training_date), selected_ex_id)
 
 is_today = (training_date == date.today())
 
-# raw のデータ数とセッションが異なる場合はリセット
+# Firestore のセット数とセッションが異なる場合はリセット
+fs_active_sets = []
+if existing_doc:
+    fs_active_sets = [s for s in existing_doc.get("sets", []) if not s.get("is_deleted", False)]
 current_saved = len([s for s in (st.session_state.get('sets') or []) if s.get('saved')])
-raw_count = len(existing) if not existing.empty else 0
-if st.session_state.get('sets') is not None and current_saved != raw_count and raw_count > 0:
+fs_count = len(fs_active_sets)
+if st.session_state.get('sets') is not None and current_saved != fs_count and fs_count > 0:
     st.session_state.sets = None
     st.session_state.restored = False
 
-# セット状態の初期化・復元
+# セット状態の初期化・復元（Firestore から）
 if st.session_state.get('sets') is None:
     # ウィジェット状態を再度クリア（確実に）
     keys_to_delete = [k for k in list(st.session_state.keys()) 
@@ -272,177 +243,154 @@ if st.session_state.get('sets') is None:
     for k in keys_to_delete:
         del st.session_state[k]
 
-    if not existing.empty:
+    if fs_active_sets:
         st.session_state.sets = []
-        for _, row in existing.iterrows():
-            created = row['created_at']
-            if created.tzinfo is None:
-                created = created.replace(tzinfo=timezone.utc)
+        # editable_until で編集可否を判定
+        editable_until_str = existing_doc.get("editable_until")
+        for s in fs_active_sets:
             if is_today:
                 editable = True
+            elif editable_until_str:
+                try:
+                    editable_until_dt = datetime.fromisoformat(editable_until_str)
+                    editable = datetime.now(timezone.utc) < editable_until_dt
+                except (ValueError, TypeError):
+                    editable = False
             else:
-                editable = datetime.now(timezone.utc) < created + timedelta(hours=3)
+                editable = False
             st.session_state.sets.append({
-                'log_id': row['log_id'],
-                'weight': float(row['weight_kg']),
-                'reps': int(row['reps']),
-                'rpe': float(row['rpe']) if row['rpe'] else None,
-                'memo': row['memo'] or '',
+                'set_id': s.get('set_id', str(uuid.uuid4())),
+                'weight': float(s['weight_kg']),
+                'reps': int(s['reps']),
+                'rpe': s.get('rpe'),
+                'memo': s.get('memo', ''),
                 'saved': True,
-                'editable': editable
+                'editable': editable,
+                'created_at': s.get('created_at'),  # created_at をそのまま使用
             })
         st.session_state.restored = True
     else:
-        # Streaming Buffer 対策：2秒待ってリトライ
-        import time
-        time.sleep(2)
-        existing_retry = query(f"""
-            WITH deduped AS (
-                SELECT
-                    *,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY log_id
-                        ORDER BY updated_at DESC
-                    ) AS rn
-                FROM raw.training_log
-                WHERE user_id = '{user_id}'
-                  AND exercise_name = '{selected_ex}'
-                  AND training_date = '{training_date}'
-            )
-            SELECT log_id, set_number, weight_kg, reps, rpe, memo, created_at
-            FROM deduped
-            WHERE rn = 1 AND is_deleted = FALSE
-            ORDER BY set_number
-        """)
+        # 新規入力：空のセットを5つ用意
+        st.session_state.sets = [
+            {'weight': None, 'reps': None, 'rpe': None, 'memo': '', 'saved': False}
+            for _ in range(5)
+        ]
 
-        if not existing_retry.empty:
-            st.session_state.sets = []
-            for _, row in existing_retry.iterrows():
-                st.session_state.sets.append({
-                    'log_id': row['log_id'],
-                    'weight': float(row['weight_kg']),
-                    'reps': int(row['reps']),
-                    'rpe': float(row['rpe']) if row['rpe'] else None,
-                    'memo': row['memo'] or '',
-                    'saved': True,
-                    'editable': True
-                })
-            st.session_state.restored = True
-        else:
-            st.session_state.sets = [
-                {'weight': None, 'reps': None, 'rpe': None, 'memo': '', 'saved': False}
-                for _ in range(5)
-            ]
-
-if not existing.empty and st.session_state.get('restored'):
+if fs_active_sets and st.session_state.get('restored'):
     saved_count = len([s for s in st.session_state.sets if s.get('saved')])
     st.success(f"✅ 本日の記録を復元しました（{saved_count}セット）。セットの追加・編集が可能です。")
 
-# ===== セット入力フォーム（コンパクト版）=====
+# ===== セット入力フォーム（st.form 版）=====
 total_volume = 0.0
-key_prefix = f"{selected_bp}_{selected_ex}_{training_date}"
+key_prefix = f"{selected_bp}_{selected_ex_id}_{training_date}"
 
+with st.form("set_input_form"):
+    for i, s in enumerate(st.session_state.sets):
+        set_num = i + 1
+        editable = s.get('editable', True)
+        status = "✅" if s['saved'] else ""
+
+        c0, c1, c2, c3 = st.columns([1, 3, 2, 4])
+        with c0:
+            st.markdown(f"{set_num}{status}")
+        with c1:
+            st.number_input(
+                "kg", min_value=0.0, max_value=500.0, step=0.5,
+                value=s['weight'] if s['weight'] is not None else 0.0,
+                key=f"w_{key_prefix}_{i}", disabled=not editable,
+                label_visibility="visible" if i == 0 else "collapsed"
+            )
+        with c2:
+            st.number_input(
+                "rep", min_value=0, max_value=100, step=1,
+                value=s['reps'] if s['reps'] is not None else 0,
+                key=f"r_{key_prefix}_{i}", disabled=not editable,
+                label_visibility="visible" if i == 0 else "collapsed"
+            )
+        with c3:
+            st.text_input(
+                "memo", value=s.get('memo', ''),
+                key=f"memo_{key_prefix}_{i}",
+                max_chars=200, disabled=not editable,
+                label_visibility="visible" if i == 0 else "collapsed"
+            )
+
+    # 保存ボタン（form 内）
+    submitted = st.form_submit_button("💾 保存", use_container_width=True, type="primary")
+
+# form 外で volume を集計
 for i, s in enumerate(st.session_state.sets):
-    set_num = i + 1
-    editable = s.get('editable', True)
-    status = "✅" if s['saved'] else ""
+    w_val = st.session_state.get(f"w_{key_prefix}_{i}", 0.0)
+    r_val = st.session_state.get(f"r_{key_prefix}_{i}", 0)
+    if w_val and r_val:
+        total_volume += w_val * r_val
 
-    c0, c1, c2, c3 = st.columns([1, 3, 2, 4])
-    with c0:
-        st.markdown(f"{set_num}{status}")
-    with c1:
-        w = st.number_input(
-            "kg", min_value=0.0, max_value=500.0, step=0.5,
-            value=s['weight'] if s['weight'] is not None else 0.0,
-            key=f"w_{key_prefix}_{i}", disabled=not editable,
-            label_visibility="visible" if i == 0 else "collapsed"
-        )
-    with c2:
-        r = st.number_input(
-            "rep", min_value=0, max_value=100, step=1,
-            value=s['reps'] if s['reps'] is not None else 0,
-            key=f"r_{key_prefix}_{i}", disabled=not editable,
-            label_visibility="visible" if i == 0 else "collapsed"
-        )
-    with c3:
-        memo = st.text_input(
-            "memo", value=s.get('memo', ''),
-            key=f"memo_{key_prefix}_{i}",
-            max_chars=200, disabled=not editable,
-            label_visibility="visible" if i == 0 else "collapsed"
-        )
-
-    if w and r:
-        total_volume += w * r
-
-# 保存ボタン
-if st.button("💾 保存", use_container_width=True, type="primary"):
-    # ★ ここでログインチェック
+# 保存処理（form submit 後）
+if submitted:
     require_login_for_action()
 
-    saved_count = 0
-    for i, s in enumerate(st.session_state.sets):
-        w_key = f"w_{key_prefix}_{i}"
-        r_key = f"r_{key_prefix}_{i}"
-        memo_key = f"memo_{key_prefix}_{i}"
+    now = datetime.now(timezone.utc).isoformat()
+    new_sets = []
+    has_valid_set = False
 
-        w_val = st.session_state.get(w_key)
-        r_val = st.session_state.get(r_key)
-        memo_val = st.session_state.get(memo_key, '')
+    for i, s in enumerate(st.session_state.sets):
+        w_val = st.session_state.get(f"w_{key_prefix}_{i}")
+        r_val = st.session_state.get(f"r_{key_prefix}_{i}")
+        memo_val = st.session_state.get(f"memo_{key_prefix}_{i}", '')
 
         if w_val is None or r_val is None or w_val <= 0 or r_val <= 0:
             continue
 
-        # 新規 or 値が変わった場合に保存
-        is_new = not s['saved']
-        is_changed = s['saved'] and (
-            s.get('weight') != float(w_val) or
-            s.get('reps') != int(r_val) or
-            s.get('memo', '') != (memo_val or '')
+        has_valid_set = True
+        set_id = s.get('set_id', str(uuid.uuid4()))
+
+        # 既存セットは created_at を維持、新規セットは now
+        created_at = s.get('created_at') if s.get('saved') else now
+
+        new_sets.append({
+            "set_id": set_id,
+            "set_number": i + 1,
+            "weight_kg": float(w_val),
+            "reps": int(r_val),
+            "rpe": None,
+            "memo": memo_val if memo_val else "",
+            "is_deleted": False,
+            "created_at": created_at,
+            "updated_at": now,
+        })
+
+    if has_valid_set:
+        # 既存の論理削除済みセットも保持する
+        if existing_doc:
+            deleted_sets = [s for s in existing_doc.get("sets", []) if s.get("is_deleted", False)]
+            new_sets = new_sets + deleted_sets
+
+        success = save_training_log(
+            user_id=user_id,
+            user_name=user_name if is_logged_in() else "",
+            training_date=str(training_date),
+            body_part_id=selected_bp,
+            body_part_name=selected_bp_name,
+            exercise_id=selected_ex_id,
+            exercise_name=selected_ex_name,
+            sets=new_sets,
         )
-
-        if is_new or is_changed:
-            log_id = s.get('log_id', str(uuid.uuid4()))
-            now = datetime.now(timezone.utc).isoformat()
-
-            # 変更の場合は古いレコードを論理削除して新規INSERT
-            if is_changed and s.get('log_id'):
-                soft_delete_log(s['log_id'])
-                log_id = str(uuid.uuid4())
-
-            row = {
-                'log_id': log_id,
-                'user_id': user_id,
-                'exercise_name': selected_ex,
-                'body_part': selected_bp,
-                'training_date': str(training_date),
-                'set_number': i + 1,
-                'weight_kg': float(w_val),
-                'reps': int(r_val),
-                'rpe': None,
-                'memo': memo_val if memo_val else '',
-                'input_source': 'streamlit',
-                'created_at': now,
-                'updated_at': now,
-                'is_deleted': False
-            }
-
-            try:
-                insert_rows('training-assistant-prod.raw.training_log', [row])
-                st.session_state.sets[i]['saved'] = True
-                st.session_state.sets[i]['log_id'] = log_id
-                st.session_state.sets[i]['weight'] = float(w_val)
-                st.session_state.sets[i]['reps'] = int(r_val)
-                st.session_state.sets[i]['memo'] = memo_val or ''
-                saved_count += 1
-            except Exception as e:
-                st.error(f"保存エラー: {e}")
-
-    if saved_count > 0:
-        st.success(f"✅ {saved_count}セット保存しました")
+        if success:
+            # session_state を更新
+            for i, ns in enumerate(
+                [s for s in new_sets if not s.get("is_deleted", False)]
+            ):
+                if i < len(st.session_state.sets):
+                    st.session_state.sets[i]['saved'] = True
+                    st.session_state.sets[i]['set_id'] = ns['set_id']
+                    st.session_state.sets[i]['weight'] = ns['weight_kg']
+                    st.session_state.sets[i]['reps'] = ns['reps']
+                    st.session_state.sets[i]['memo'] = ns['memo']
+            active_count = len([s for s in new_sets if not s.get("is_deleted", False)])
+            st.success(f"✅ {active_count}セット保存しました")
+            st.rerun()
     else:
         st.info("変更はありません")
-    st.rerun()
 
 # 総負荷量の表示
 col_vol1, col_vol2 = st.columns(2)
@@ -456,7 +404,7 @@ with col_vol2:
         diff_pct = (diff / prev_vol * 100) if prev_vol > 0 else 0
         st.metric("前回との差分", f"{diff:+,.1f} kg ({diff_pct:+.1f}%)")
 
-# セット追加・削除ボタン
+# セット追加・削除ボタン（form 外）
 col_btn1, col_btn2, col_btn3 = st.columns(3)
 with col_btn1:
     if st.button("＋ 追加", use_container_width=True):
@@ -475,20 +423,19 @@ with col_btn2:
         require_login_for_action()
         if len(st.session_state.sets) > 1:
             last = st.session_state.sets[-1]
-            if last.get('log_id'):
-                soft_delete_log(last['log_id'])
+            # Firestore に保存済みのセットなら論理削除
+            if last.get('set_id') and last.get('saved'):
+                soft_delete_set(user_id, str(training_date), selected_ex_id, last['set_id'])
             st.session_state.sets.pop()
             st.rerun()
 
 with col_btn3:
-    saved_sets = [s for s in st.session_state.sets if s.get('log_id')]
+    saved_sets = [s for s in st.session_state.sets if s.get('set_id') and s.get('saved')]
     if saved_sets:
         if st.button("🗑 全削除", use_container_width=True, type="secondary"):
             require_login_for_action()
-            # 確認なしで即実行（ボタン2回押し問題を回避）
-            for s in st.session_state.sets:
-                if s.get('log_id'):
-                    soft_delete_log(s['log_id'])
+            # Firestore ドキュメント全体を論理削除
+            soft_delete_training_log(user_id, str(training_date), selected_ex_id)
             # ウィジェットキーをクリア
             keys_to_delete = [k for k in list(st.session_state.keys())
                               if k.startswith(('w_', 'r_', 'memo_', 'rpe_'))]
