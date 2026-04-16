@@ -3,12 +3,13 @@ import json
 import subprocess
 import uuid
 from datetime import datetime
-from google.cloud import bigquery, secretmanager
+from google.cloud import bigquery, secretmanager, firestore
 from linebot.v3.messaging import (
     Configuration, ApiClient, MessagingApi, PushMessageRequest, TextMessage
 )
 
 bq_client = bigquery.Client()
+fs_client = firestore.Client(project="training-assistant-prod")
 
 def get_secret(secret_id):
     client = secretmanager.SecretManagerServiceClient()
@@ -131,6 +132,78 @@ def send_daily_notifications():
                 log_notification(row.user_id, '7day', 'failed')
                 print(f"Error sending 7day notification to {row.user_id}: {e}")
 
+def sync_firestore_to_bigquery():
+    """FirestoreからBigQueryへ同期する
+    
+    sync_status="pending"のドキュメントを取得し、BigQuery raw.training_logに書き込む。
+    同期成功後にFirestoreのsync_statusを"synced"に更新する。
+    """
+    collection_name = "training_logs"
+    table_id = "training-assistant-prod.raw.training_log"
+    
+    # sync_status="pending"のドキュメントを取得
+    docs_ref = fs_client.collection(collection_name).where("sync_status", "==", "pending")
+    docs = docs_ref.get()
+    
+    if not docs:
+        print("Firestore同期対象なし")
+        return
+    
+    total_docs = len(docs)
+    total_rows = 0
+    success_docs = 0
+    
+    for doc in docs:
+        doc_id = doc.id
+        data = doc.to_dict()
+        
+        try:
+            # FirestoreドキュメントをBigQuery行に展開
+            rows = []
+            doc_is_deleted = data.get("is_deleted", False)
+            
+            for s in data.get("sets", []):
+                # is_deletedルール: doc.is_deleted OR set.is_deleted
+                row_is_deleted = doc_is_deleted or s.get("is_deleted", False)
+                
+                row = {
+                    "log_id": s.get("set_id"),
+                    "user_id": data.get("user_id"),
+                    "exercise_name": data.get("exercise_name"),
+                    "body_part": data.get("body_part_id"),
+                    "training_date": data.get("training_date"),
+                    "set_number": s.get("set_number"),
+                    "weight_kg": s.get("weight_kg"),
+                    "reps": s.get("reps"),
+                    "rpe": s.get("rpe"),
+                    "memo": s.get("memo", ""),
+                    "input_source": data.get("input_source", "streamlit"),
+                    "created_at": s.get("created_at"),
+                    "updated_at": s.get("updated_at"),
+                    "is_deleted": row_is_deleted,
+                }
+                rows.append(row)
+            
+            # BigQueryにまとめて書き込み
+            if rows:
+                bq_client.insert_rows_json(table_id, rows)
+                total_rows += len(rows)
+            
+            # 同期成功後にFirestoreを更新
+            doc_ref = fs_client.collection(collection_name).document(doc_id)
+            doc_ref.update({
+                "sync_status": "synced",
+                "synced_at": datetime.utcnow().isoformat(),
+            })
+            success_docs += 1
+            
+        except Exception as e:
+            print(f"Firestore同期エラー（ドキュメント: {doc_id}）: {e}")
+            # 同期失敗時はsync_statusを更新しない
+            continue
+    
+    print(f"Firestore同期完了: {success_docs}/{total_docs}ドキュメント, {total_rows}行")
+
 def run_dbt(command, select=None):
     cmd = ["dbt", command, "--project-dir", "/workspace/dbt", "--profiles-dir", "/workspace/dbt"]
     if select:
@@ -181,18 +254,21 @@ def retrain_ml_model():
 
 @functions_framework.http
 def handle_daily_pipeline(request):
-    """日次パイプライン: dbt run + test + 日次通知 + ML再学習（月曜のみ）"""
+    """日次パイプライン: Firestore同期 + dbt run + test + 日次通知 + ML再学習（月曜のみ）"""
     try:
-        # 1. dbt run
+        # 1. Firestore → BigQuery 同期
+        sync_firestore_to_bigquery()
+
+        # 2. dbt run
         run_dbt("run")
 
-        # 2. dbt test
+        # 3. dbt test
         run_dbt("test")
 
-        # 3. 日次通知
+        # 4. 日次通知
         send_daily_notifications()
 
-        # 4. ML再学習（月曜のみ）
+        # 5. ML再学習（月曜のみ）
         today = datetime.now().weekday()  # 0=月曜
         if today == 0:
             retrain_ml_model()
