@@ -115,8 +115,9 @@ with exercises_col1:
 # 種目一覧を取得（exercise_id ベース）
 exercises = query(f"""
     SELECT exercise_id, exercise_name
-    FROM mart.d_exercise
+    FROM raw.exercise_master
     WHERE body_part_id = '{selected_bp}'
+      AND is_active = TRUE
     ORDER BY display_order
 """)
 
