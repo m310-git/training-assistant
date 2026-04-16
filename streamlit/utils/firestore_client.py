@@ -127,6 +127,7 @@ def save_training_log(
                 "updated_at": now,
                 "last_edited_at": now,
                 "sync_status": "pending",
+                "synced_at": None,
                 "sync_version": existing_data.get("sync_version", 0) + 1,
             })
         else:
@@ -225,6 +226,7 @@ def soft_delete_set(
             "updated_at": now,
             "last_edited_at": now,
             "sync_status": "pending",
+            "synced_at": None,
             "sync_version": data.get("sync_version", 0) + 1,
         })
         return True
@@ -259,6 +261,7 @@ def soft_delete_training_log(
             "updated_at": now,
             "last_edited_at": now,
             "sync_status": "pending",
+            "synced_at": None,
             "sync_version": data.get("sync_version", 0) + 1,
         })
         return True
