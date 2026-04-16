@@ -8,7 +8,7 @@ INSERT INTO raw.user_master VALUES
     ('user_002', 'ユーザー2', 'U_LINE_ID_002', FALSE, TRUE, CURRENT_TIMESTAMP()),
     ('user_003', 'ユーザー3', 'U_LINE_ID_003', FALSE, TRUE, CURRENT_TIMESTAMP());
 
--- 種目マスタ（17種目: 5部位×3種目 + その他2種目）
+-- 種目マスタ（18種目: 5部位×3種目 + 脚1種目 + その他2種目）
 INSERT INTO raw.exercise_master VALUES
     -- 胸
     ('bench_press',       'ベンチプレス',             'chest',    TRUE,  TRUE, 1, CURRENT_TIMESTAMP()),
@@ -26,6 +26,7 @@ INSERT INTO raw.exercise_master VALUES
     ('squat',             'スクワット',                'leg',      TRUE,  TRUE, 1, CURRENT_TIMESTAMP()),
     ('leg_press',         'レッグプレス',              'leg',      FALSE, TRUE, 2, CURRENT_TIMESTAMP()),
     ('leg_curl',          'レッグカール',              'leg',      FALSE, TRUE, 3, CURRENT_TIMESTAMP()),
+    ('leg_extension',     'レッグエクステンション',      'leg',      FALSE, TRUE, 4, CURRENT_TIMESTAMP()),
     -- 腕
     ('barbell_curl',      'バーベルカール',            'arm',      FALSE, TRUE, 1, CURRENT_TIMESTAMP()),
     ('triceps_pushdown',  'トライセプスプッシュダウン',  'arm',      FALSE, TRUE, 2, CURRENT_TIMESTAMP()),
