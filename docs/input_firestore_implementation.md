@@ -285,5 +285,6 @@ BigQuery 直結から Firestore ベースに移行し、入力画面の体感速
 ### 11.6. 残課題
 
 - Firestore filter 警告（主因ではないため無視可能）
-- メモリ増加（1024MB、無料枠内に収まる可能性が高い）
+- メモリ増加（1024MB、Firestore SDK 追加に伴うメモリ増加対応、無料枠内に収まる可能性が高い）
 - Firestore filter の位置引数をキーワード引数に修正することで解消可能
+- IAM 権限付与（`roles/datastore.user` をサービスアカウントに付与済み）
