@@ -24,15 +24,16 @@ client = bigquery.Client(
     project="training-assistant-prod"
 )
 
-# INSERT 文の実行
+# UPDATE 文の実行
 query = """
-INSERT INTO `training-assistant-prod.raw.exercise_master` VALUES
-    ('dips', 'ディップス', 'chest', TRUE, TRUE, 4, CURRENT_TIMESTAMP());
+UPDATE `training-assistant-prod.raw.exercise_master`
+SET is_compound = FALSE
+WHERE exercise_id = 'dips'
 """
 
 try:
     job = client.query(query)
     job.result()  # クエリの完了を待つ
-    print("ディップスを種目マスタに追加しました")
+    print("ディップスのis_compoundをFALSEに変更しました")
 except Exception as e:
     print(f"エラーが発生しました: {e}")
