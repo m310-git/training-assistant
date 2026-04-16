@@ -27,12 +27,12 @@ client = bigquery.Client(
 # INSERT 文の実行
 query = """
 INSERT INTO `training-assistant-prod.raw.exercise_master` VALUES
-    ('leg_extension', 'レッグエクステンション', 'leg', FALSE, TRUE, 4, CURRENT_TIMESTAMP());
+    ('dips', 'ディップス', 'chest', TRUE, TRUE, 4, CURRENT_TIMESTAMP());
 """
 
 try:
     job = client.query(query)
     job.result()  # クエリの完了を待つ
-    print("レッグエクステンションを種目マスタに追加しました")
+    print("ディップスを種目マスタに追加しました")
 except Exception as e:
     print(f"エラーが発生しました: {e}")
