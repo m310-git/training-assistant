@@ -58,3 +58,9 @@ Thumbs.db
 .coverage
 htmlcov/
 .pytest_cache/
+
+# ========== ドキュメント（統合前ファイル） ==========
+# Firestore関連ドキュメントはdesign.mdに統合済み
+docs/firestore_collection_design.md
+docs/input_firestore_implementation.md
+docs/migration_firestore.md
