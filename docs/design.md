@@ -55,6 +55,11 @@
     - 14.3. [Phase 4: IaC（Terraform）](#143-phase-4-iacterraform)
     - 14.4. [補助ツール: Google Colab](#144-補助ツール-google-colab)
 15. [初期データ（種目マスタ）](#15-初期データ種目マスタ)
+16. [Firestore 設計・実装](#16-firestore-設計実装)
+    - 16.1. [Firestore 移行方針](#161-firestore-移行方針)
+    - 16.2. [Firestore コレクション設計](#162-firestore-コレクション設計)
+    - 16.3. [Input画面 Firestore 化 実装指示書](#163-input画面-firestore-化-実装指示書)
+    - 16.4. [実装完了内容](#164-実装完了内容)
 
 ---
 # **1. プロジェクト概要**
@@ -2273,3 +2278,858 @@ INSERT INTO raw.exercise_master VALUES
 | v2.0 | - | MVP再設計。フェーズ分割。テーブルスキーマ詳細化。 |
 | v2.1 | 2026/03/05 | 新機能追加: カレンダー、ランキング（総合・部位別・変動表示）、ソーシャル（記録更新フィード・他ユーザー閲覧）、種目追加リクエスト/承認フロー、セット単位入力、自動保存、編集機能（3時間制限）、休憩タイマー、LINE通知改善（開始通知自動化・ランキング変動表示・アプリURLリンク）、通知カウンター、「その他」部位追加、デッドリフト→ハーフデッドリフト変更、Phase 5 ML提案計画追加。 |
 | v2.2 | 2026/03/06 | BigQuery MLをPhase 1に統合（Phase 5削除）。データ品質ツールをGreat Expectations → dbt-expectations + Elementaryに変更。開発リソース比較検討書に基づく技術選定の反映。 |
+| v2.3 | 2026/04-16 | Firestore 移行実装。Input画面の保存先をBigQueryからFirestoreに変更。Firestore → BigQuery同期処理を追加。種目マスタをraw.exercise_masterから直接取得するように変更。 |
+
+---
+
+# **16. Firestore 設計・実装**
+
+## 16.1. Firestore 移行方針
+
+### 目的
+
+現状の Streamlit アプリは、ユーザー入力のたびにスクリプト全体が再実行され、そのたびに BigQuery へ複数回クエリを発行しているため、入力体験が重い。
+
+特に `streamlit/pages/1_📝_Input.py` は、部位一覧取得、種目一覧取得、過去履歴取得、提案取得、当日既存記録取得、再取得などを1ページ内で繰り返しており、Streamlit の rerun モデルと相性が悪い。
+
+そのため、**入力・編集のリアルタイム処理を Firestore に移し、BigQuery は分析・集計専用に寄せる**。
+
+### 目標
+
+#### 主目標
+- 入力画面の体感速度を改善する
+- 保存・復元・編集のレスポンスを改善する
+- BigQuery をインタラクティブ入力用途から切り離す
+- 既存の dbt / mart / ランキング / ダッシュボードを極力活かす
+
+#### 非目標
+- 初回フェーズでは全画面を Firestore 化しない
+- ランキング、ダッシュボード、ソーシャル、カレンダーの集計ロジックは原則 BigQuery のまま
+- BigQuery ML / dbt モデル構造は初回では大きく変更しない
+
+### 採用アーキテクチャ
+
+#### 役割分担
+- **Firestore**
+  - 入力中データ
+  - 当日編集データ
+  - セット単位の保存
+  - 当日復元
+  - 論理削除管理
+- **BigQuery**
+  - 日次集計
+  - ランキング
+  - ダッシュボード
+  - カレンダー
+  - ソーシャル
+  - ML提案
+- **dbt**
+  - staging / mart モデル生成
+- **Cloud Scheduler + Cloud Run functions**
+  - Firestore → BigQuery 同期
+  - dbt 実行
+  - 通知
+
+#### 設計意図
+Firestore は小規模な読み書きに向いており、無料枠として1 GiB 保存、50,000 reads/日、20,000 writes/日、20,000 deletes/日がある。一方 BigQuery は 1 TiB/月のクエリ無料枠と 10 GiB/月のストレージ無料枠があり、分析・集計用途と相性が良い。BigQuery への batch loading は無料であり、入力系は Firestore、分析系は BigQuery に分離する構成が無料枠とUXの両面で相性が良い。
+
+### 移行スコープ
+
+#### フェーズ1（今回）
+対象:
+- `streamlit/pages/1_📝_Input.py`
+
+変更内容:
+- セット入力の保存先を BigQuery から Firestore に変更
+- 当日復元を Firestore から取得
+- 当日編集も Firestore ベースに変更
+- `st.form` を導入し、入力中の rerun を減らす
+- BigQuery は履歴参照・提案表示のみに限定
+
+#### フェーズ2
+対象:
+- Cloud Function / Cloud Run function
+- BigQuery raw 取り込み処理
+
+変更内容:
+- Firestore の確定済みトレーニングデータを BigQuery `raw.training_log` に同期
+- dbt を実行し mart を更新
+- 既存のカレンダー / ダッシュボード / ランキングを継続利用
+
+#### フェーズ3（必要なら）
+対象:
+- `app.py`
+- `Calendar.py`
+- `Social.py`
+
+変更内容:
+- 「当日だけ即時反映が必要」な一部参照を Firestore 補助参照に変更
+- 集計用途は引き続き BigQuery
+
+### データフロー
+
+#### 入力時
+1. ユーザーが Streamlit の Input 画面で入力
+2. Firestore の `training_logs` に保存
+3. 画面は Firestore から即時再読込または session_state 更新
+4. BigQuery には即時書き込みしない
+
+#### 日次同期時
+1. Scheduler が同期ジョブを起動
+2. Firestore から BigQuery raw 用データを抽出
+3. BigQuery `raw.training_log` に batch load / まとめ書き
+4. dbt run / dbt test 実行
+5. mart 更新
+
+#### 参照時
+- Input 画面の当日入力・復元: Firestore
+- 過去履歴・提案・ランキング・ダッシュボード: BigQuery / mart
+
+### Firestore に移す理由
+
+#### パフォーマンス
+現状は Streamlit rerun により、入力のたびに BigQuery クエリが複数回発生する。Firestore による単純な document read/write にすることで、入力画面の待ち時間を大幅に減らせる。
+
+#### コスト
+BigQuery は batch loading が無料だが、ストリーミング系の取り込みは別料金体系であり、インタラクティブ入力の主保存先としては不向き。Firestore へ一旦保存し、BigQuery へは日次同期とする方が無料枠運用に向く。
+
+#### 保守性
+入力系の CRUD と分析系の集計を分離することで、コード責務が明確になる。
+
+### BigQuery 連携方針
+
+#### BigQuery raw テーブルは維持
+既存の `raw.training_log` は維持する。ただし、直接 Streamlit から insert しない。
+
+#### 同期方式
+初期案:
+- 日次バッチ同期
+
+将来的な拡張案:
+- 5〜15分ごとのマイクロバッチ
+- 明示的な「確定」操作時のみ同期
+
+#### 同期単位
+Firestore 上の「1種目1日単位」ドキュメントを展開し、BigQuery では従来通り「1セット1レコード」で保存する。
+
+### 論理削除方針
+
+Firestore 上では以下のどちらかで対応する:
+- セット単位に `is_deleted = true` を持たせる
+- 削除済みセットを配列から取り除くが、監査用に `deleted_sets` に移す
+
+初期実装では、BigQuery との整合性維持のため、**セット単位に `is_deleted` を保持する方式**を採用する。
+
+理由:
+- 既存 BigQuery / dbt ロジックが論理削除前提
+- 同期時に raw.training_log へ自然にマッピングできる
+
+---
+
+## 16.2. Firestore コレクション設計
+
+### 概要
+
+本設計では、Streamlit の入力画面高速化を目的として、**当日入力・保存・編集・復元に必要なデータを Firestore に保存**する。
+
+BigQuery は引き続き以下の用途で利用する。
+- ランキング
+- ダッシュボード
+- カレンダー
+- ソーシャル
+- ML提案
+- dbt による staging / mart 変換
+
+Firestore は **入力系の一次保存先**、BigQuery は **分析系の参照先** として責務を分離する。
+
+### 設計方針
+
+#### 目的
+以下を満たすことを目的とする。
+- 1ユーザー / 1日 / 1種目 の入力を高速に復元できる
+- セット単位の編集がしやすい
+- BigQuery `raw.training_log` に変換しやすい
+- 小規模構成で保守しやすい
+- 将来の BigQuery 同期処理に対応しやすい
+
+#### 初期方針
+初期フェーズでは以下のシンプルな構造を採用する。
+- トップレベルコレクションは 1つ
+- 1ドキュメント = 1ユーザー × 1日 × 1種目
+- セットは `sets` 配列で保持
+- 削除は物理削除ではなく論理削除
+- 同期状態をドキュメントに持つ
+
+### コレクション構成
+
+#### 採用コレクション
+- `training_logs`
+
+#### ドキュメント単位
+1ドキュメントは以下の単位で管理する。
+- `1ユーザー × 1日 × 1種目`
+
+#### ドキュメントID
+以下の形式を採用する。
+
+~~~text
+{user_id}_{training_date}_{exercise_id}
+~~~
+
+例:
+
+~~~text
+user_001_2026-04-12_bench_press
+user_001_2026-04-12_squat
+user_002_2026-04-12_lat_pulldown
+~~~
+
+#### この構成を採用する理由
+- Input 画面が必要とする参照単位に一致する
+- 当日復元時に 1ドキュメント read で済む
+- BigQuery 同期時に 1ドキュメントを複数セットへ展開しやすい
+- 実装が単純で保守しやすい
+
+### ドキュメントスキーマ
+
+#### 全体構造例
+
+~~~json
+{
+  "doc_id": "user_001_2026-04-12_bench_press",
+  "user_id": "user_001",
+  "user_name": "山田",
+  "training_date": "2026-04-12",
+  "body_part_id": "chest",
+  "body_part_name": "胸",
+  "exercise_id": "bench_press",
+  "exercise_name": "ベンチプレス",
+  "input_source": "streamlit",
+  "status": "active",
+  "is_deleted": false,
+  "sets": [
+    {
+      "set_id": "0e7d54e4-3e90-4c7b-9d82-3e0c94b0d111",
+      "set_number": 1,
+      "weight_kg": 80.0,
+      "reps": 5,
+      "rpe": null,
+      "memo": "",
+      "is_deleted": false,
+      "created_at": "2026-04-12T10:00:00+00:00",
+      "updated_at": "2026-04-12T10:00:00+00:00"
+    },
+    {
+      "set_id": "c1b7d92c-71c1-4f23-8d6f-d3c3b7182222",
+      "set_number": 2,
+      "weight_kg": 85.0,
+      "reps": 3,
+      "rpe": null,
+      "memo": "少し重い",
+      "is_deleted": false,
+      "created_at": "2026-04-12T10:00:00+00:00",
+      "updated_at": "2026-04-12T10:05:00+00:00"
+    }
+  ],
+  "set_count": 2,
+  "total_volume": 655.0,
+  "created_at": "2026-04-12T10:00:00+00:00",
+  "updated_at": "2026-04-12T10:05:00+00:00",
+  "last_edited_at": "2026-04-12T10:05:00+00:00",
+  "editable_until": "2026-04-12T13:00:00+00:00",
+  "sync_status": "pending",
+  "synced_at": null,
+  "sync_version": 1,
+  "schema_version": 1
+}
+~~~
+
+### フィールド定義
+
+#### ドキュメント共通フィールド
+
+| フィールド名 | 型 | 必須 | 説明 |
+|---|---|---:|---|
+| `doc_id` | string | 任意 | ドキュメントIDを冗長保持 |
+| `user_id` | string | 必須 | ユーザーID |
+| `user_name` | string | 任意 | 表示用ユーザー名 |
+| `training_date` | string | 必須 | `YYYY-MM-DD` |
+| `body_part_id` | string | 必須 | 部位ID |
+| `body_part_name` | string | 任意 | 表示用部位名 |
+| `exercise_id` | string | 必須 | 種目ID |
+| `exercise_name` | string | 必須 | 種目名 |
+| `input_source` | string | 必須 | 例: `streamlit` |
+| `status` | string | 必須 | `active` / `deleted` / `archived` |
+| `is_deleted` | bool | 必須 | ドキュメント全体の論理削除フラグ |
+| `sets` | array<object> | 必須 | セット情報の配列 |
+| `set_count` | number | 必須 | 有効セット数 |
+| `total_volume` | number | 必須 | 有効セットの総負荷量 |
+| `created_at` | string or timestamp | 必須 | 初回作成日時 |
+| `updated_at` | string or timestamp | 必須 | 最終更新日時 |
+| `last_edited_at` | string or timestamp | 必須 | 最終編集日時 |
+| `editable_until` | string or timestamp | 必須 | 編集期限 |
+| `sync_status` | string | 必須 | `pending` / `synced` / `failed` |
+| `synced_at` | string or timestamp or null | 任意 | 最終同期日時 |
+| `sync_version` | number | 必須 | 同期バージョン |
+| `schema_version` | number | 必須 | スキーマバージョン |
+
+### `sets` 配列の定義
+
+#### セット項目
+
+| フィールド名 | 型 | 必須 | 説明 |
+|---|---|---:|---|
+| `set_id` | string | 必須 | セット単位の一意ID |
+| `set_number` | number | 必須 | 表示順。1始まり |
+| `weight_kg` | number | 必須 | 重量 |
+| `reps` | number | 必須 | 回数 |
+| `rpe` | number or null | 任意 | RPE |
+| `memo` | string | 任意 | メモ |
+| `is_deleted` | bool | 必須 | セット論理削除フラグ |
+| `created_at` | string or timestamp | 必須 | セット初回作成日時 |
+| `updated_at` | string or timestamp | 必須 | セット更新日時 |
+
+#### `set_id` を持つ理由
+`set_number` は並び替えや削除で変わる可能性があるため、更新・削除・同期の識別子としては不安定である。
+
+そのため、各セットには以下を満たす一意な `set_id` を付与する。
+- セット単位の論理削除がしやすい
+- BigQuery 同期時に `log_id` として流用しやすい
+- 冪等性を作りやすい
+- 差分比較がしやすい
+
+### データ保持ルール
+
+#### セット数
+- 1ドキュメントあたり最大20セットを想定
+- UI 上も20セットを上限とする
+
+#### 表示対象
+画面表示時は以下のみ表示対象とする。
+- ドキュメント `is_deleted = false`
+- `sets[].is_deleted = false`
+
+#### 総負荷量
+`total_volume` は以下で算出する。
+
+~~~text
+sum(weight_kg * reps) for active sets
+~~~
+
+#### セット数
+`set_count` は以下で算出する。
+
+~~~text
+active sets の件数
+~~~
+
+### BigQuery へのマッピング方針
+
+Firestore では 1ドキュメントに複数セットを保持するが、BigQuery `raw.training_log` では **1セット = 1レコード** として保存する。
+
+#### マッピング表
+
+| Firestore | BigQuery `raw.training_log` |
+|---|---|
+| `user_id` | `user_id` |
+| `training_date` | `training_date` |
+| `exercise_name` | `exercise_name` |
+| `body_part_id` | `body_part` |
+| `sets[n].set_id` | `log_id` |
+| `sets[n].set_number` | `set_number` |
+| `sets[n].weight_kg` | `weight_kg` |
+| `sets[n].reps` | `reps` |
+| `sets[n].rpe` | `rpe` |
+| `sets[n].memo` | `memo` |
+| `input_source` | `input_source` |
+| `sets[n].created_at` | `created_at` |
+| `sets[n].updated_at` | `updated_at` |
+| `sets[n].is_deleted` | `is_deleted` |
+
+#### `log_id` 方針
+BigQuery 側の `log_id` には Firestore の `set_id` をそのまま使用する。
+
+##### 理由
+- Firestore 保存時点で一意性が保証できる
+- 同期時の変換が単純
+- BigQuery で upsert / dedupe しやすい
+- set 単位の追跡がしやすい
+
+### クエリパターン
+
+#### Input 画面: 当日・特定種目の復元
+##### 条件
+- `user_id`
+- `training_date`
+- `exercise_id`
+
+##### 方法
+- ドキュメントID直指定
+
+##### 例
+
+~~~text
+training_logs/user_001_2026-04-12_bench_press
+~~~
+
+#### 特定日の全種目取得
+##### 条件
+- `user_id = X`
+- `training_date = Y`
+- `is_deleted = false`
+
+##### 用途
+- 将来の当日サマリー表示
+- カレンダーやトップ画面への即時反映補助
+
+#### 未同期ドキュメント取得
+##### 条件
+- `sync_status = pending`
+
+##### 用途
+- Firestore → BigQuery 同期バッチ
+
+### インデックス方針
+
+#### 初期方針
+初期フェーズでは、以下のシンプルなクエリに限定する。
+- ドキュメントID直取得
+- `where("user_id", "==", ...)`
+- `where("training_date", "==", ...)`
+- `where("sync_status", "==", ...)`
+
+#### ねらい
+- 複雑な複合インデックスを避ける
+- 実装を単純に保つ
+- 無駄な最適化をしない
+
+#### 運用ルール
+- まずはドキュメントID直取得を優先する
+- 一覧取得は単純条件のみ
+- 複雑な並び替えはアプリ側で対応する
+
+### 論理削除設計
+
+#### ドキュメント全体削除
+物理削除しない。以下を更新する。
+
+~~~json
+{
+  "status": "deleted",
+  "is_deleted": true,
+  "sync_status": "pending"
+}
+~~~
+
+#### セット単位削除
+対象セットの `is_deleted` を `true` にする。
+
+#### この方式を採用する理由
+- 既存 BigQuery / dbt ロジックが論理削除前提
+- 監査・調査がしやすい
+- 同期時に差分扱いしやすい
+- 誤操作時の復旧余地がある
+
+### 同期管理フィールド
+
+#### `sync_status`
+取りうる値:
+- `pending`
+- `synced`
+- `failed`
+
+#### `sync_version`
+ドキュメント更新ごとに `+1` する。
+
+#### `synced_at`
+BigQuery 同期成功時刻を保持する。
+
+#### 用途
+- 再送制御
+- 同期失敗調査
+- 重複投入防止
+- 同期状況の可視化
+
+### 編集制限
+
+#### 現行仕様
+- 作成から3時間以内のみ編集可能
+
+#### Firestore での保持
+以下のフィールドで表現する。
+- `created_at`
+- `editable_until`
+
+#### UI 判定
+
+~~~text
+now < editable_until
+~~~
+
+#### 備考
+将来的に「当日なら常に編集可」へ変更する場合も、このフィールド構成を維持したまま UI ロジックだけ変えられる。
+
+### バリデーションルール
+
+Firestore 保存前にアプリ側で以下を検証する。
+
+| 項目 | ルール |
+|---|---|
+| `training_date` | 必須。未来日付不可 |
+| `weight_kg` | 0.0〜500.0 |
+| `reps` | 1〜100 |
+| `rpe` | `null` または 6.0〜10.0 |
+| `memo` | 0〜200文字 |
+| `set_number` | 1〜20 |
+| `exercise_id` | 必須 |
+| `body_part_id` | 必須 |
+
+保存レイヤでも可能な範囲で再検証する。
+
+### 命名規則
+
+#### コレクション名
+
+~~~text
+training_logs
+~~~
+
+#### ドキュメントID
+
+~~~text
+{user_id}_{training_date}_{exercise_id}
+~~~
+
+#### フィールド名
+既存 BigQuery / dbt と揃えて **snake_case** を採用する。
+
+例:
+- `user_id`
+- `training_date`
+- `exercise_id`
+- `body_part_id`
+- `total_volume`
+
+### 将来拡張
+
+#### サブコレクション化
+将来、1ドキュメント内の `sets` 配列更新が扱いづらくなった場合は、以下へ移行可能とする。
+
+~~~text
+training_logs/{doc_id}/sets/{set_id}
+~~~
+
+ただし初期フェーズでは以下を優先して配列方式を採用する。
+- 実装の簡単さ
+- 読み取り回数削減
+- Input 画面との相性
+
+#### `draft` / `confirmed` 状態分離
+必要になれば `status` に以下を追加可能。
+- `draft`
+- `confirmed`
+
+ただし初期実装では以下で十分とする。
+- `active`
+- `deleted`
+
+### repository 層で想定する関数
+
+Firestore SDK をページから直接呼ばず、util / repository に閉じ込める。
+
+#### 推奨関数
+- `build_training_doc_id(user_id, training_date, exercise_id)`
+- `get_training_log(user_id, training_date, exercise_id)`
+- `save_training_log(...)`
+- `soft_delete_set(user_id, training_date, exercise_id, set_id)`
+- `soft_delete_training_log(user_id, training_date, exercise_id)`
+- `list_training_logs_by_date(user_id, training_date)`
+- `list_pending_sync_logs(limit=100)`
+- `mark_synced(doc_id)`
+
+### 運用ルール
+
+#### 保存
+- 1種目分まとめて保存
+- 保存時に `updated_at`, `last_edited_at`, `sync_status = "pending"` を更新
+- `sync_version` をインクリメント
+
+#### 削除
+- セット削除は `sets[].is_deleted = true`
+- 全削除はドキュメント `is_deleted = true`
+
+#### 表示
+- 表示時は `is_deleted = false` のみ対象
+- `sets` は `is_deleted = false` のみ UI に出す
+
+#### 同期
+- `sync_status = "pending"` のドキュメントを同期対象とする
+- BigQuery 同期成功後に `sync_status = "synced"` と `synced_at` を更新する
+
+### 設計上のメリット
+
+この設計により、以下のメリットが得られる。
+- 入力画面の復元が速い
+- 1回の read で1種目分の入力状態を取れる
+- BigQuery へ自然に展開できる
+- 小規模アプリとして十分シンプル
+- 既存 BigQuery / dbt 資産を活かせる
+
+### 注意事項
+- Firestore は一次保存先とし、分析用途には使いすぎない
+- 集計・ランキング・履歴分析は引き続き BigQuery を使う
+- Firestore と BigQuery の一時的不整合は許容し、BigQuery は非同期反映とする
+- 物理削除は原則行わない
+
+### 最終方針
+
+初期実装では、以下を正式採用とする。
+- コレクション: `training_logs`
+- 単位: `1ユーザー × 1日 × 1種目`
+- ID: `{user_id}_{training_date}_{exercise_id}`
+- セット保持: `sets` 配列
+- 削除: 論理削除
+- 同期: `sync_status` ベースで日次同期
+
+この設計をベースに、まずは Input 画面を Firestore 化する。
+
+---
+
+## 16.3. Input画面 Firestore 化 実装指示書
+
+### 目的
+
+`streamlit/pages/1_📝_Input.py` の入力・保存・復元・削除処理をBigQuery 直結から Firestore ベースに移行し、入力画面の体感速度を改善する。
+
+### 今回の実装対象
+
+#### 対象ファイル
+- `streamlit/pages/1_📝_Input.py`
+- `streamlit/utils/firestore_client.py`（新規作成）
+- `requirements.txt`
+
+#### 参照ファイル
+- `streamlit/utils/bigquery_client.py`
+- `streamlit/utils/auth.py`
+- `streamlit/utils/validators.py`
+- `docs/migration_firestore.md`
+- `docs/firestore_collection_design.md`
+
+### 今回やること
+
+#### Firestore util の追加
+`streamlit/utils/firestore_client.py` を新規作成し、以下の責務を持たせる。
+- Firestore client 初期化
+- ドキュメントID生成
+- 1種目1日分の取得
+- 1種目1日分の保存
+- セット単位論理削除
+- ドキュメント全体論理削除
+
+#### Input 画面の保存先切替
+`streamlit/pages/1_📝_Input.py` の以下を Firestore ベースへ変更する。
+- 当日の既存記録取得
+- 保存
+- 末尾削除
+- 全削除
+- 当日復元
+
+#### UI 改善
+セット入力部分を `st.form` に変更し、入力のたびの rerun を減らす。
+
+#### 不要処理の削除
+以下を削除する。
+- `time.sleep(2)`
+- BigQuery 再読込のための retry ロジック
+- Input画面内の BigQuery 直書き保存ロジック
+
+#### Firestore → BigQuery 同期処理
+`cloud_functions/dbt_runner/main.py` に Firestore → BigQuery 同期処理を追加する。
+- Firestore から `sync_status = "pending"` のドキュメントを取得
+- ドキュメントの `sets` 配列を展開して BigQuery `raw.training_log` に streaming insert
+- 同期成功後に Firestore ドキュメントの `sync_status = "synced"` に更新
+- `synced_at` に現在時刻を設定
+
+### 今回やらないこと
+
+以下は今回のスコープ外とする。
+- `Calendar.py` の Firestore 化
+- `Dashboard.py` の Firestore 化
+- `Ranking.py` の Firestore 化
+- `Social.py` の Firestore 化
+- dbt モデル変更
+- BigQuery テーブル定義変更
+- auth 全面改修
+
+### BigQuery に残すもの
+
+以下の参照は従来どおり BigQuery から取得する。
+- 部位一覧
+- 種目一覧
+- 過去履歴
+- ML提案
+- 直近3回実績
+
+### 実装方針
+
+#### 種目選択
+現在の `exercise_name` ベース選択を、可能な限り `exercise_id` ベースへ寄せる。
+
+#### Firestore ドキュメント単位
+1ドキュメント = `1ユーザー × 1日 × 1種目`
+
+ドキュメントID形式:
+
+~~~text
+{user_id}_{training_date}_{exercise_id}
+~~~
+
+#### セット保持
+- `sets` 配列で保持する
+- 各セットに `set_id` を持たせる
+- `set_id` は UUID を使用する
+- BigQuery 側の `log_id` と互換になるようにする
+
+#### 削除
+- 物理削除しない
+- セット削除は `sets[].is_deleted = true`
+- 全削除はドキュメント `is_deleted = true`
+
+#### 同期用フィールド
+以下を保持する。
+- `sync_status`
+- `sync_version`
+- `synced_at`
+
+今回は同期処理自体は作らないが、後続実装のためにフィールドは入れる。
+
+### 実装時の制約
+- Firestore SDK をページ内に直接書かない
+- Firestore アクセスは `streamlit/utils/firestore_client.py` に閉じ込める
+- BigQuery 参照ロジックは極力壊さない
+- 既存 UI を大きく崩さない
+- コメントは日本語で書く
+- セキュリティ情報をコードにハードコードしない
+
+### 推奨実装順序
+1. `requirements.txt` に Firestore 依存追加
+2. `streamlit/utils/firestore_client.py` 新規作成
+3. Firestore client 初期化確認
+4. `Input.py` の種目選択を `exercise_id` ベースへ整理
+5. 当日復元を Firestore へ変更
+6. 保存を Firestore へ変更
+7. 末尾削除 / 全削除を Firestore へ変更
+8. セット入力を `st.form` 化
+9. 不要な `sleep / retry` ロジック削除
+10. 動作確認
+
+### 完了条件
+
+以下を満たしたら完了とする。
+- Input画面で BigQuery 直書きなしに保存できる
+- 保存後に Firestore から復元できる
+- 末尾削除が動く
+- 全削除が動く
+- `st.form` 化されている
+- `time.sleep(2)` が削除されている
+- BigQuery の履歴・提案・直近実績表示が壊れていない
+- Firestore → BigQuery 同期処理が実装されている
+- Firestore → BigQuery 同期の実データE2E確認が完了している
+- `synced_at` のルール修正が実装されている（未同期状態に戻すときsynced_atもnullに戻す）
+
+---
+
+## 16.4. 実装完了内容
+
+### 変更ファイル一覧
+
+- `streamlit/utils/firestore_client.py`（新規作成）
+- `streamlit/pages/1_📝_Input.py`（変更）
+- `cloud_functions/dbt_runner/main.py`（変更）
+- `cloud_functions/dbt_runner/requirements.txt`（変更）
+
+### 変更内容要約
+
+#### Streamlit 側
+- Firestore クライアントユーティリティを新規作成
+- Input 画面の保存先を BigQuery から Firestore に変更
+- セット入力を `st.form` 化
+- 不要な `sleep / retry` ロジックを削除
+- `synced_at` のルール修正（未同期状態に戻すときsynced_atもnullに戻す）
+
+#### Cloud Functions 側
+- Firestore → BigQuery 同期処理を実装
+- IAM 権限付与（`roles/datastore.user`）
+- メモリを 512MB から 1024MB に増加
+
+### 追加した関数一覧
+
+#### `streamlit/utils/firestore_client.py`
+- `get_firestore_client()`: Firestore クライアント初期化
+- `build_training_doc_id()`: ドキュメントID生成
+- `get_training_log()`: トレーニングログ取得
+- `save_training_log()`: トレーニングログ保存
+- `soft_delete_set()`: セット単位論理削除
+- `soft_delete_training_log()`: ドキュメント全体論理削除
+
+#### `cloud_functions/dbt_runner/main.py`
+- `sync_firestore_to_bigquery()`: Firestore → BigQuery 同期処理
+
+### Firestore ドキュメント構造の最終版
+
+```json
+{
+  "doc_id": "{user_id}_{training_date}_{exercise_id}",
+  "user_id": "user_001",
+  "user_name": "ユーザー名",
+  "training_date": "2026-04-16",
+  "body_part_id": "chest",
+  "body_part_name": "胸",
+  "exercise_id": "bench_press",
+  "exercise_name": "ベンチプレス",
+  "input_source": "streamlit",
+  "status": "active",
+  "is_deleted": false,
+  "sets": [
+    {
+      "set_id": "UUIDv4",
+      "set_number": 1,
+      "weight_kg": 100.0,
+      "reps": 5,
+      "rpe": 8.0,
+      "memo": "",
+      "is_deleted": false,
+      "created_at": "ISO8601",
+      "updated_at": "ISO8601"
+    }
+  ],
+  "set_count": 3,
+  "total_volume": 1500.0,
+  "created_at": "ISO8601",
+  "updated_at": "ISO8601",
+  "last_edited_at": "ISO8601",
+  "editable_until": "ISO8601",
+  "sync_status": "pending" | "synced",
+  "synced_at": "ISO8601" | null,
+  "sync_version": 1,
+  "schema_version": 1
+}
+```
+
+### synced_at のルール
+
+#### 保存時
+- 新規作成: `sync_status = "pending"`, `synced_at = null`
+- 更新: `sync_status = "pending"`, `synced_at = null`
+- セット削除: `sync_status = "pending"`, `synced_at = null`
+- 全体削除: `sync_status = "pending"`, `synced_at = null`
+
+#### 同期成功時
+- `sync_status = "synced"`, `synced_at = 現在時刻`（Cloud Function 側で設定）
+
+### 残課題
+
+- Firestore filter 警告（主因ではないため無視可能）
+- メモリ増加（1024MB、Firestore SDK 追加に伴うメモリ増加対応、無料枠内に収まる可能性が高い）
+- Firestore filter の位置引数をキーワード引数に修正することで解消可能
+- IAM 権限付与（`roles/datastore.user` をサービスアカウントに付与済み）
