@@ -31,6 +31,7 @@ https://training-assistant-m310.streamlit.app/
 | 4 (IaC) | Terraform導入 | ⏳ 未着手 |
 
 ## ディレクトリ構造
+```
 training-assistant/
 ├── streamlit/          # 入力UI・ダッシュボード
 ├── dbt/                # データ変換モデル
@@ -39,6 +40,7 @@ training-assistant/
 ├── tests/              # テストコード
 ├── docs/               # 設計書
 └── .github/workflows/  # CI/CD
+```
 
 ## 機能一覧
 
